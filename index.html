@@ -840,33 +840,25 @@ function buildApp() {
 // LOGIN PAGE
 // ═══════════════════════════════════════════════════════
 function buildLoginPage() {
-  const isChangePwd = state.loginMode === 'change-password';
   return `
   <div id="login-page">
     <div class="login-card">
       <div class="login-logo">
         <div class="login-logo-mark">${I.logo}</div>
         <div class="login-title">Exponencial MBA</div>
-        <div class="login-sub">${isChangePwd ? 'Defina sua nova senha' : 'Plataforma de gestão de turmas'}</div>
+        <div class="login-sub">Plataforma de gestão de turmas</div>
       </div>
-      ${isChangePwd ? `
-        <div class="field"><label class="lbl">Nova Senha</label><input class="inp" type="password" id="login-newpwd" placeholder="Mínimo 6 caracteres" autocomplete="new-password"></div>
-        <div class="field"><label class="lbl">Confirmar Senha</label><input class="inp" type="password" id="login-newpwd2" placeholder="Repita a senha" autocomplete="new-password"></div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px" id="btn-set-pwd">Salvar nova senha</button>
-      ` : `
-        <div class="field"><label class="lbl">Email</label><input class="inp" type="email" id="login-email" placeholder="seu@email.com" autocomplete="email"></div>
-        <div class="field"><label class="lbl">Senha</label><input class="inp" type="password" id="login-pwd" placeholder="••••••••" autocomplete="current-password"></div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px" id="btn-login">Entrar</button>
-        <div style="display:flex;align-items:center;gap:10px;margin:14px 0 0">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <span style="font-size:11px;color:var(--t4)">ou</span>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>
-        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;font-size:12.5px" id="btn-admin-bypass">
+      <div class="section-title" style="margin-bottom:10px">Entrar como</div>
+      <div class="profile-grid">
+        ${PROFILES.filter(p=>p.id!=='admin').map(p=>`
+          <button class="profile-btn" data-login="${p.id}">${p.name}</button>
+        `).join('')}
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12.5px" id="btn-admin-bypass">
           Entrar como Administrador
         </button>
-      `}
-      <div id="login-err" style="display:none" class="login-err"></div>
+      </div>
     </div>
   </div>`;
 }
@@ -910,10 +902,9 @@ function buildSidebar() {
         <span class="sb-uname" style="flex:1">${u.name}</span>
         <button class="sb-out" data-logout title="Sair">${I.logout}</button>
       </div>
-      ${u.id !== 'admin' ? `
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-change-password>
-        🔑 Trocar senha
-      </button>` : ''}
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
+        ${I.switchIcon} Trocar perfil
+      </button>
       <button class="btn" id="gcal-connect-btn" style="width:100%;justify-content:center;font-size:11px;padding:6px 10px;gap:6px;${gcalIsConnected(u.id)?'background:var(--green-bg);color:var(--green-t);border:1px solid var(--green-t)':'background:var(--bg-t);color:var(--t3);border:1px solid var(--border)'}" data-gcal-connect>
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         ${gcalIsConnected(u.id) ? '✓ Google Calendar conectado' : 'Conectar Google Calendar'}
@@ -2168,35 +2159,19 @@ function logAccess(page) {
 }
 
 function attachEvents() {
-  // ── Supabase Auth: Login form ───────────────────────────
-  document.getElementById('btn-login')?.addEventListener('click', async () => {
-    const email = document.getElementById('login-email')?.value.trim();
-    const pwd   = document.getElementById('login-pwd')?.value;
-    const errEl = document.getElementById('login-err');
-    if (!email || !pwd) { errEl.textContent='Preencha email e senha'; errEl.style.display='block'; return; }
-    errEl.style.display='none';
-    document.getElementById('btn-login').textContent = 'Entrando...';
-    try {
-      const session = await sbSignIn(email, pwd);
-      const u = session.user;
-      const name = u.user_metadata?.name || u.email.split('@')[0];
-      const role = u.user_metadata?.role || 'consultor';
-      // Map to internal profile format
-      const id = u.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'');
-      state.user = { id, name, email: u.email, role, sbId: u.id };
-      // Sync PROFILES so dropdowns work
-      if (!PROFILES.find(p=>p.id===id)) PROFILES.push({id, name});
+  // Login — clique no perfil
+  document.querySelectorAll('[data-login]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const pid = el.dataset.login;
+      const p = PROFILES.find(x=>x.id===pid) || {id:pid, name:pid};
+      state.user = p;
       await loadStateFromDb();
       logAccess('login');
       render();
-    } catch(e) {
-      errEl.textContent = e.message.includes('Invalid') ? 'Email ou senha incorretos' : e.message;
-      errEl.style.display = 'block';
-      document.getElementById('btn-login').textContent = 'Entrar';
-    }
+    });
   });
 
-  // Admin bypass — no login required
+  // Admin bypass
   document.getElementById('btn-admin-bypass')?.addEventListener('click', async () => {
     state.user = { id: 'admin', name: 'Admin', role: 'admin' };
     state.page = 'admin';
@@ -2204,33 +2179,6 @@ function attachEvents() {
     await loadStateFromDb();
     logAccess('login');
     render();
-  });
-
-  // Enter key on login
-  document.getElementById('login-pwd')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('btn-login')?.click();
-  });
-  document.getElementById('login-email')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('login-pwd')?.focus();
-  });
-
-  // Change password form
-  document.getElementById('btn-set-pwd')?.addEventListener('click', async () => {
-    const p1 = document.getElementById('login-newpwd')?.value;
-    const p2 = document.getElementById('login-newpwd2')?.value;
-    const errEl = document.getElementById('login-err');
-    if (!p1 || p1.length < 6) { errEl.textContent='Senha precisa ter ao menos 6 caracteres'; errEl.style.display='block'; return; }
-    if (p1 !== p2) { errEl.textContent='As senhas não conferem'; errEl.style.display='block'; return; }
-    errEl.style.display='none';
-    try {
-      await sbUpdatePassword(p1);
-      state.loginMode = null;
-      showToast('Senha definida com sucesso!', 'ok');
-      render();
-    } catch(e) {
-      errEl.textContent = e.message;
-      errEl.style.display = 'block';
-    }
   });
 
   // Logout
@@ -2252,16 +2200,15 @@ function attachEvents() {
     }
   });
 
-  document.querySelector('[data-logout]')?.addEventListener('click', async () => {
-    await sbSignOut();
+  document.querySelector('[data-logout]')?.addEventListener('click', () => {
     state.user = null; state.selAluno = null; state.selTurma = null; state.filtroMedicosSet = false; state.filtroMedicos = 'todos';
     render();
   });
 
   // Switch profile button → open modal
-  // Change password button in sidebar
-  document.querySelector('[data-change-password]')?.addEventListener('click', () => {
-    state.modal = {type:'change-password'};
+  // Switch profile
+  document.querySelector('[data-switch-profile]')?.addEventListener('click', () => {
+    state.modal = {type:'switch-profile'};
     render();
   });
 
@@ -5039,48 +4986,6 @@ function recalcTaxaPresenca(tid) {
 // INIT — Check Supabase session / invite token
 // ═══════════════════════════════════════════════════════
 async function init() {
-  // Check for invite/recovery token in URL hash (Supabase magic link)
-  const hash = window.location.hash;
-  if (hash.includes('type=invite') || hash.includes('type=recovery') || hash.includes('access_token')) {
-    // Extract tokens from hash
-    const params = new URLSearchParams(hash.replace('#',''));
-    const access_token = params.get('access_token');
-    const refresh_token = params.get('refresh_token');
-    if (access_token) {
-      sbSession = { access_token, refresh_token };
-      localStorage.setItem('sb_session', JSON.stringify(sbSession));
-      // Get user info
-      try {
-        const u = await sbRequest('/auth/v1/user', 'GET');
-        const name = u.user_metadata?.name || u.email.split('@')[0];
-        const id = u.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'');
-        state.user = { id, name, email: u.email, role: u.user_metadata?.role || 'consultor', sbId: u.id };
-        if (!PROFILES.find(p=>p.id===id)) PROFILES.push({id, name});
-        // Clear hash from URL
-        history.replaceState(null, '', window.location.pathname);
-        // Show change password screen
-        state.loginMode = 'change-password';
-      } catch(e) { console.warn('invite token error', e); }
-    }
-    render();
-    return;
-  }
-
-  // Try to restore session from localStorage
-  const session = await sbRefreshSession();
-  if (session) {
-    try {
-      const u = await sbRequest('/auth/v1/user', 'GET');
-      const name = u.user_metadata?.name || u.email.split('@')[0];
-      const id = u.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g,'');
-      state.user = { id, name, email: u.email, role: u.user_metadata?.role || 'consultor', sbId: u.id };
-      if (!PROFILES.find(p=>p.id===id)) PROFILES.push({id, name});
-      await loadStateFromDb();
-    } catch(e) {
-      sbSession = null;
-      localStorage.removeItem('sb_session');
-    }
-  }
   render();
 }
 
