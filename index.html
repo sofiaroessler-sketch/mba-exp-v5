@@ -2408,19 +2408,19 @@ function attachEvents() {
   document.querySelectorAll('[data-quickedit-turma]').forEach(el => {
     el.addEventListener('change', () => {
       const a = state.alunos.find(x=>x.id===el.dataset.quickeditTurma);
-      if (a) { a.turma = el.value; render(); }
+      if (a) { a.turma = el.value; scheduleSave(); render(); }
     });
   });
   document.querySelectorAll('[data-quickedit-resp]').forEach(el => {
     el.addEventListener('change', () => {
       const a = state.alunos.find(x=>x.id===el.dataset.quickeditResp);
-      if (a) { a.responsavel = el.value; render(); }
+      if (a) { a.responsavel = el.value; scheduleSave(); render(); }
     });
   });
   document.querySelectorAll('[data-quickedit-status]').forEach(el => {
     el.addEventListener('change', () => {
       const a = state.alunos.find(x=>x.id===el.dataset.quickeditStatus);
-      if (a) { a.status = el.value; render(); }
+      if (a) { a.status = el.value; scheduleSave(); render(); }
     });
   });
 
@@ -2443,6 +2443,7 @@ function attachEvents() {
       const existing = kpi.meses.find(m=>m.key===key);
       if (existing) existing.done = !existing.done;
       else kpi.meses.push({key, done:true});
+      scheduleSave();
       render();
     });
   });
@@ -2469,6 +2470,7 @@ function attachEvents() {
       if(!confirm('Remover este OKR e todos os KPIs?')) return;
       const a = state.alunos.find(x=>x.id===el.dataset.alunoId);
       if(a) a.okrs.splice(parseInt(el.dataset.delOkr),1);
+      scheduleSave();
       render();
     });
   });
@@ -2479,6 +2481,7 @@ function attachEvents() {
       const [oi,ki] = el.dataset.delKpi.split('-').map(Number);
       const a = state.alunos.find(x=>x.id===el.dataset.alunoId);
       if(a&&a.okrs[oi]) a.okrs[oi].kpis.splice(ki,1);
+      scheduleSave();
       render();
     });
   });
@@ -2544,6 +2547,7 @@ function attachEvents() {
       const next = (!cur||cur==='nao'||cur==='link') ? 'sim' : cur==='sim' ? 'sim2' : null;
       if(next) state.presenca[tid][aulaId][alunoId]=next;
       else delete state.presenca[tid][aulaId][alunoId];
+      scheduleSave();
       // Permanent falta log — record nao/link even if later changed
       if(next==='nao'||next==='link') {
         if(!state.faltaLog[alunoId]) state.faltaLog[alunoId]={};
@@ -2582,6 +2586,7 @@ function attachEvents() {
         if(aulaId==='a10_2') trigT('Marcar 1:1 — 4 com '+(al?.nome||''));
       }
       recalcTaxaPresenca(tid);
+      scheduleSave();
       render();
     });
   });
@@ -2594,6 +2599,7 @@ function attachEvents() {
       if (!state.presenca[tid]) state.presenca[tid] = {};
       if (!state.presenca[tid][aulaId]) state.presenca[tid][aulaId] = {};
       state.presenca[tid][aulaId][alunoId] = op;
+      scheduleSave();
       const al = state.alunos.find(a=>a.id===alunoId);
       const respId = PROFILES.find(p=>p.name===al?.responsavel)?.id || 'otavio';
       function triggerTask(titulo) {
@@ -2670,6 +2676,7 @@ function attachEvents() {
         if (!exists) addTarefa({titulo, responsavel, alunoId, alunoNome:a?.nome, prio:'media', prazo:prazo||''});
       }
       const nomeFirst = a?.nome?.split(' ')[0]||'';
+      scheduleSave();
       if (!wasDone) {
         // CHECK — create tasks for Bruna
         if (etapa==='forms')                triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
@@ -2818,6 +2825,7 @@ function attachEvents() {
         // create and mark done
         al.reunioes.push({id:'r_'+Date.now(), tipo:aulaLabel, data:new Date().toISOString().slice(0,10), realizada:true, notas:'', proxPassos:''});
       }
+      scheduleSave();
       render();
     });
   });
@@ -4213,6 +4221,7 @@ function processarImport() {
   });
   _importPending = [];
   state.modal = null;
+  scheduleSave();
   showToast(`${added} adicionados, ${updated} atualizados`);
   render();
 }
@@ -4221,7 +4230,7 @@ function parseImportFile(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const wb = XLSX.read(e.target.result, {type:'nova-reuniao'});
+      const wb = XLSX.read(e.target.result, {type:'binary'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const raw = XLSX.utils.sheet_to_json(ws, {header:1});
       // Find header row (contains 'Nome')
@@ -4649,6 +4658,7 @@ function processarImportTurmas() {
   });
   _importTurmasPending = [];
   state.modal = null;
+  scheduleSave();
   const totalPres = Object.values(state.presenca).reduce((s,t)=>s+Object.values(t).reduce((s2,a)=>s2+Object.keys(a).length,0),0);
   showToast(`${turmasAdded} turmas · ${medAdded} adicionados · ${medUpdated} atualizados · ${totalPres} presenças`);
   render();
@@ -4658,7 +4668,7 @@ function parsePlanilhaTurmas(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const wb = XLSX.read(e.target.result, {type:'nova-reuniao'});
+      const wb = XLSX.read(e.target.result, {type:'binary'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const raw = XLSX.utils.sheet_to_json(ws, {header:1});
       // Find header row
