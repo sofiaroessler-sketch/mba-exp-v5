@@ -1,4 +1,4 @@
-const SB_URL     = 'https://zwbpbhxzvjrkoglcjvjb.supabase.co';
+const SB_URL      = 'https://zwbpbhxzvjrkoglcjvjb.supabase.co';
 const SERVICE_KEY = process.env.SB_SERVICE_KEY;
 
 exports.handler = async (event) => {
@@ -7,71 +7,39 @@ exports.handler = async (event) => {
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   };
-
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers: cors, body: '' };
-  }
-
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers: cors, body: JSON.stringify({ error: 'Method not allowed' }) };
-  }
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: cors, body: '' };
+  if (event.httpMethod !== 'POST') return { statusCode: 405, headers: cors, body: 'Method Not Allowed' };
 
   try {
     const { action, ...p } = JSON.parse(event.body);
     let path, method, body;
 
     if (action === 'create') {
-      path = '/auth/v1/admin/users';
-      method = 'POST';
-      body = {
-        email: p.email,
-        password: p.password,
-        email_confirm: true,
-        user_metadata: { name: p.name, role: p.role || 'consultor' },
-        app_metadata:  { name: p.name, role: p.role || 'consultor' },
-      };
+      path = '/auth/v1/admin/users'; method = 'POST';
+      body = { email: p.email, password: p.password, email_confirm: true,
+               user_metadata: { name: p.name, role: p.role || 'consultor' },
+               app_metadata:  { name: p.name, role: p.role || 'consultor' } };
     } else if (action === 'update') {
-      path = `/auth/v1/admin/users/${p.userId}`;
-      method = 'PUT';
-      body = {
-        email: p.email,
-        password: p.password,
-        user_metadata: { name: p.name, role: p.role || 'consultor' },
-        app_metadata:  { name: p.name, role: p.role || 'consultor' },
-      };
+      path = `/auth/v1/admin/users/${p.userId}`; method = 'PUT';
+      body = { email: p.email, password: p.password,
+               user_metadata: { name: p.name, role: p.role || 'consultor' },
+               app_metadata:  { name: p.name, role: p.role || 'consultor' } };
     } else if (action === 'delete') {
-      path = `/auth/v1/admin/users/${p.userId}`;
-      method = 'DELETE';
-    } else if (action === 'list') {
-      path = '/auth/v1/admin/users?page=1&per_page=100';
-      method = 'GET';
+      path = `/auth/v1/admin/users/${p.userId}`; method = 'DELETE';
     } else {
       throw new Error('Ação inválida');
     }
 
     const res = await fetch(SB_URL + path, {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SERVICE_KEY,
-        'Authorization': `Bearer ${SERVICE_KEY}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` },
       body: body ? JSON.stringify(body) : undefined,
     });
-
     const data = await res.json();
     if (!res.ok) throw new Error(data?.message || data?.error_description || JSON.stringify(data));
 
-    return {
-      statusCode: 200,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    };
+    return { statusCode: 200, headers: { ...cors, 'Content-Type': 'application/json' }, body: JSON.stringify(data) };
   } catch (e) {
-    return {
-      statusCode: 400,
-      headers: { ...cors, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: e.message }),
-    };
+    return { statusCode: 400, headers: { ...cors, 'Content-Type': 'application/json' }, body: JSON.stringify({ error: e.message }) };
   }
 };
