@@ -366,17 +366,19 @@ function scheduleSave() {
 
 async function saveStateToDb() {
   const snapshot = {
-    alunos: state.alunos,
-    turmas: state.turmas,
-    tarefas: state.tarefas,
-    presenca: state.presenca,
-    aulasDates: state.aulasDates,
-    etapas: state.etapas,
-    linkEnviado: state.linkEnviado,
-    aulaAberta: state.aulaAberta,
-    faltaLog: state.faltaLog,
-    riscoCriteria: state.riscoCriteria,
-    accessLog: state.accessLog,
+    alunos:       state.alunos,
+    turmas:       state.turmas,
+    tarefas:      state.tarefas,
+    presenca:     state.presenca,
+    aulasDates:   state.aulasDates,
+    etapas:       state.etapas,
+    linkEnviado:  state.linkEnviado,
+    aulaAberta:   state.aulaAberta,
+    faltaLog:     state.faltaLog,
+    riscoCriteria:state.riscoCriteria,
+    accessLog:    state.accessLog,
+    profiles:     state.profiles,
+    reunioes:     state.reunioes,
   };
   try {
     console.log('[supa] salvando...');
@@ -403,7 +405,9 @@ async function loadStateFromDb() {
       if (d.aulaAberta)   state.aulaAberta   = d.aulaAberta;
       if (d.faltaLog)     state.faltaLog     = d.faltaLog;
       if (d.riscoCriteria) state.riscoCriteria = d.riscoCriteria;
-      if (d.accessLog)    state.accessLog    = d.accessLog;
+      if (d.accessLog)      state.accessLog    = d.accessLog;
+      if (d.profiles)       state.profiles     = d.profiles;
+      if (d.reunioes)       state.reunioes     = d.reunioes;
     }
   } catch(e) {
     console.warn('loadState error:', e.message);
@@ -857,7 +861,7 @@ function buildLoginPage() {
       </div>
       <div class="section-title" style="margin-bottom:10px">Entrar como</div>
       <div class="profile-grid">
-        ${PROFILES.filter(p=>p.id!=='admin').map(p=>`
+        ${state.profiles.filter(p=>p.id!=='admin').map(p=>`
           <button class="profile-btn" data-login="${p.id}">${p.name}</button>
         `).join('')}
       </div>
@@ -2170,7 +2174,7 @@ function attachEvents() {
   document.querySelectorAll('[data-login]').forEach(el => {
     el.addEventListener('click', async () => {
       const pid = el.dataset.login;
-      const p = PROFILES.find(x=>x.id===pid) || {id:pid, name:pid};
+      const p = state.profiles.find(x=>x.id===pid) || {id:pid, name:pid};
       state.user = p;
       await loadStateFromDb();
       logAccess('login');
@@ -2490,6 +2494,7 @@ function attachEvents() {
       const t = state.tarefas.find(x=>x.id===el.dataset.toggleTask);
       if (!t) return;
       t.done = !t.done;
+      scheduleSave();
       if (t.done && t.tipo === 'enviar-link' && t.alunoId && t.aulaId) {
         // Mark presença as 'link' automatically
         const tid = state.alunos.find(a=>a.id===t.alunoId)?.turma;
@@ -2711,7 +2716,9 @@ function attachEvents() {
       if (!t) return;
       t.concluida = !t.concluida;
       if (t.concluida) state.showConcluidas = true; // auto-show section when first one is concluded
+      scheduleSave();
       showToast(t.concluida ? `Turma ${t.nome} concluída` : `Turma ${t.nome} reaberta`);
+      render();
     });
   });
 
@@ -3904,8 +3911,7 @@ function buildModalNovoUsuario() {
       <div class="modal-hdr"><div class="modal-title">Novo Usuário</div><button class="btn-icon" data-close-modal>${I.x}</button></div>
       <div class="modal-body">
         <div class="field"><label class="lbl">Nome *</label><input class="inp" id="nu-nome" placeholder="Nome completo"></div>
-        <div class="field"><label class="lbl">Email *</label><input class="inp" type="email" id="nu-email" placeholder="nome@email.com.br"></div>
-        <div class="field"><label class="lbl">Senha *</label><input class="inp" type="text" id="nu-pwd" placeholder="Mínimo 6 caracteres"><span style="font-size:11px;color:var(--t4);margin-top:4px;display:block">Informe a senha ao usuário. Ele poderá trocá-la depois.</span></div>
+        <div class="field"><label class="lbl">Email</label><input class="inp" type="email" id="nu-email" placeholder="nome@email.com.br"></div>
         <div class="field">
           <label class="lbl">Perfil / Papel</label>
           <select class="inp" id="nu-role">
@@ -3955,17 +3961,14 @@ function salvarEditProfile(el) {
   const pp = PROFILES.find(x=>x.id===pid);
   if (pp) pp.name = p.name;
   state.modal = null;
+  scheduleSave();
   showToast('Usuário atualizado');
 }
 
-async function salvarNovoUsuario() {
+function salvarNovoUsuario() {
   const nome  = document.getElementById('nu-nome')?.value.trim();
   const email = document.getElementById('nu-email')?.value.trim();
-  const pwd   = document.getElementById('nu-pwd')?.value;
-  const role  = document.getElementById('nu-role')?.value || 'consultor';
-  if (!nome)  return showToast('Nome é obrigatório', 'err');
-  if (!email || !email.includes('@')) return showToast('Email válido é obrigatório', 'err');
-  if (!pwd || pwd.length < 6) return showToast('Senha precisa ter ao menos 6 caracteres', 'err');
+
   try {
     const btn = document.querySelector('[data-action="salvar-novo-usuario"]');
     if (btn) btn.textContent = 'Criando...';
