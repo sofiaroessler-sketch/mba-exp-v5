@@ -3968,22 +3968,15 @@ function salvarEditProfile(el) {
 function salvarNovoUsuario() {
   const nome  = document.getElementById('nu-nome')?.value.trim();
   const email = document.getElementById('nu-email')?.value.trim();
-
-  try {
-    const btn = document.querySelector('[data-action="salvar-novo-usuario"]');
-    if (btn) btn.textContent = 'Criando...';
-    const res = await adminUsersEdgeFn({ action: 'create', email, password: pwd, name: nome, role });
-    const sbId = res.id;
-    const id = nome.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'') + '_' + Date.now().toString().slice(-4);
-    state.profiles.push({id, name:nome, email, role, sbId});
-    if (!PROFILES.find(p=>p.id===id)) PROFILES.push({id, name:nome});
-    if (role === 'consultor' && !RESPONSAVEIS.includes(nome)) RESPONSAVEIS.push(nome);
-    state.modal = null;
-    scheduleSave();
-    showToast(`${nome} criado com sucesso`, 'ok');
-  } catch(e) {
-    showToast('Erro: ' + e.message, 'err');
-  }
+  const role  = document.getElementById('nu-role')?.value || 'consultor';
+  if (!nome) return showToast('Nome é obrigatório', 'err');
+  const id = nome.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'') + '_' + Date.now().toString().slice(-4);
+  state.profiles.push({id, name:nome, email: email||'', role});
+  if (role === 'consultor' && !RESPONSAVEIS.includes(nome)) RESPONSAVEIS.push(nome);
+  state.modal = null;
+  scheduleSave();
+  showToast(`${nome} adicionado`, 'ok');
+  render();
 }
 
 function salvarEditTurma(el) {
