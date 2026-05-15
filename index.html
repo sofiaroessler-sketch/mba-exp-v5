@@ -360,7 +360,6 @@ function scheduleSave() {
 }
 
 async function saveStateToDb() {
-  if (!sbSession) return;
   const snapshot = {
     alunos: state.alunos,
     turmas: state.turmas,
