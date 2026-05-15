@@ -335,11 +335,16 @@ async function dbUpsert(table, data) {
       'Content-Type': 'application/json',
       'apikey': SB_ANON,
       'Authorization': `Bearer ${token}`,
-      'Prefer': 'resolution=merge-duplicates,return=minimal',
+      'Prefer': 'resolution=merge-duplicates,return=representation',
     },
     body: JSON.stringify(data),
   });
-  if (!res.ok) { const t = await res.text(); throw new Error(t); }
+  if (!res.ok) {
+    const t = await res.text();
+    console.error('[supa] dbUpsert error', res.status, t);
+    throw new Error(t);
+  }
+  return res.json();
 }
 async function dbUpdate(table, data, match) {
   const q = Object.entries(match).map(([k,v])=>`${k}=eq.${v}`).join('&');
@@ -374,9 +379,12 @@ async function saveStateToDb() {
     accessLog: state.accessLog,
   };
   try {
+    console.log('[supa] salvando...');
     await dbUpsert('app_state', { id: 'main', data: snapshot, updated_at: new Date().toISOString() });
+    console.log('[supa] salvo com sucesso');
   } catch(e) {
-    console.warn('saveState error:', e.message);
+    console.error('[supa] ERRO ao salvar:', e.message);
+    showToast('Erro ao salvar: ' + e.message, 'err');
   }
 }
 
