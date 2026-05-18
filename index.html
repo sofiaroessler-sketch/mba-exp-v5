@@ -3815,7 +3815,8 @@ function buildAdminRelatorio() {
     byUser[e.userId].total++;
     byUser[e.userId].pages[e.page] = (byUser[e.userId].pages[e.page]||0)+1;
   });
-  const userStats = Object.values(byUser).sort((a,b)=>b.total-a.total);
+  const userStats = Object.values(byUser).filter(u=>u.total>0).sort((a,b)=>b.total-a.total);
+  const totalLog = log.length || 1;
 
   // Count per page
   const byPage = {};
@@ -3832,19 +3833,36 @@ function buildAdminRelatorio() {
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
       <div class="card" style="flex:1;min-width:200px;padding:14px 16px">
         <div class="section-title" style="margin-bottom:10px">Por usuário</div>
-        ${userStats.map(u=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:13px;color:var(--t2)">${u.name}</span>
-            <span class="pill pill-blue" style="font-size:10px">${u.total} acessos</span>
-          </div>`).join('')}
+        ${userStats.map(u=>{
+          const pct = Math.round(u.total/totalLog*100);
+          const barColor = pct>=50?'var(--brand)':pct>=25?'var(--amber)':'var(--t4)';
+          return `
+          <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+              <span style="font-size:13px;color:var(--t2)">${u.name}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--t1)">${pct}%</span>
+            </div>
+            <div style="height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:width .3s"></div>
+            </div>
+          </div>`;
+        }).join('')}
       </div>
       <div class="card" style="flex:1;min-width:200px;padding:14px 16px">
         <div class="section-title" style="margin-bottom:10px">Por página</div>
-        ${pageStats.map(([p,n])=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:13px;color:var(--t2)">${p}</span>
-            <span class="pill pill-gray" style="font-size:10px">${n}</span>
-          </div>`).join('')}
+        ${pageStats.map(([p,n])=>{
+          const pct = Math.round(n/totalLog*100);
+          return `
+          <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+              <span style="font-size:13px;color:var(--t2)">${p}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--t1)">${pct}%</span>
+            </div>
+            <div style="height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:var(--brand-h);border-radius:2px"></div>
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
     <div class="section-title" style="margin-bottom:10px">Últimos acessos</div>
