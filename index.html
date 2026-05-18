@@ -5027,6 +5027,35 @@ function recalcTaxaPresenca(tid) {
 // INIT — Check Supabase session / invite token
 // ═══════════════════════════════════════════════════════
 async function init() {
+  // Carrega profiles do Supabase antes de renderizar a tela de login
+  // para que novos usuários criados apareçam imediatamente
+  try {
+    const rows = await dbSelect('app_state', 'id=eq.main&select=data');
+    if (rows && rows[0]?.data?.profiles) {
+      const dbProfiles = rows[0].data.profiles;
+      // Merge com PROFILES hardcoded — novos do banco que não existem no código
+      dbProfiles.forEach(p => {
+        if (!state.profiles.find(x=>x.id===p.id)) {
+          state.profiles.push(p);
+        } else {
+          // Atualiza nome/email se mudou
+          const existing = state.profiles.find(x=>x.id===p.id);
+          existing.name  = p.name;
+          existing.email = p.email||'';
+        }
+        // Sync PROFILES global (usado na tela de login)
+        if (!PROFILES.find(x=>x.id===p.id)) {
+          PROFILES.push({id:p.id, name:p.name, email:p.email||''});
+        } else {
+          const pp = PROFILES.find(x=>x.id===p.id);
+          pp.name  = p.name;
+          pp.email = p.email||'';
+        }
+      });
+    }
+  } catch(e) {
+    console.warn('init: erro ao carregar profiles', e.message);
+  }
   render();
 }
 
