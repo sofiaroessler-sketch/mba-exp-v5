@@ -406,7 +406,14 @@ async function loadStateFromDb() {
       if (d.faltaLog)     state.faltaLog     = d.faltaLog;
       if (d.riscoCriteria) state.riscoCriteria = d.riscoCriteria;
       if (d.accessLog)      state.accessLog    = d.accessLog;
-      if (d.profiles)       state.profiles     = d.profiles;
+      if (d.profiles) {
+        state.profiles = d.profiles;
+        // Sync PROFILES global so login screen shows all users
+        d.profiles.forEach(p => {
+          if (!PROFILES.find(x=>x.id===p.id)) PROFILES.push({id:p.id, name:p.name, email:p.email||''});
+          else { const pp=PROFILES.find(x=>x.id===p.id); pp.name=p.name; pp.email=p.email||''; }
+        });
+      }
       if (d.reunioes)       state.reunioes     = d.reunioes;
     }
   } catch(e) {
@@ -3997,7 +4004,10 @@ function salvarNovoUsuario() {
   const role  = document.getElementById('nu-role')?.value || 'consultor';
   if (!nome) return showToast('Nome é obrigatório', 'err');
   const id = nome.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'') + '_' + Date.now().toString().slice(-4);
-  state.profiles.push({id, name:nome, email: email||'', role});
+  const novoPerfil = {id, name:nome, email: email||'', role};
+  state.profiles.push(novoPerfil);
+  // Também adiciona ao PROFILES global para aparecer na tela de login
+  if (!PROFILES.find(p=>p.id===id)) PROFILES.push({id, name:nome, email: email||''});
   if (role === 'consultor' && !RESPONSAVEIS.includes(nome)) RESPONSAVEIS.push(nome);
   state.modal = null;
   scheduleSave();
