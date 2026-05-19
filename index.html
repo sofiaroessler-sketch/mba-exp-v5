@@ -1875,7 +1875,7 @@ function buildDetailReunioes(a) {
             ${!r.realizada ? `<span class="pill pill-blue" style="font-size:9.5px;margin-left:8px">Agendada</span>` : `<span class="pill pill-green" style="font-size:9.5px;margin-left:8px">Realizada</span>`}
           </div>
           <div style="display:flex;gap:5px">
-            ${!r.realizada ? `<button class="btn btn-primary btn-xs" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>` : ''}
+            ${!r.realizada ? `<button class="btn btn-primary btn-xs" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>` : `<button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-desmarcar="${r.id}" data-aluno-id="${a.id}">Desmarcar</button>`}
             <button class="btn btn-ghost btn-xs" data-reagendar="${r.id}" data-aluno-id="${a.id}">Reagendar</button>
           </div>
         </div>
@@ -2968,6 +2968,24 @@ function attachEvents() {
       state.alunos = state.alunos.filter(a=>a.id!==el.dataset.delAluno);
       showToast('Médico removido');
   scheduleSave();
+    });
+  });
+
+  // Desmarcar reunião
+  document.querySelectorAll('[data-desmarcar]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const a = state.alunos.find(x=>x.id===el.dataset.alunoId);
+      if (!a) return;
+      const r = (a.reunioes||[]).find(x=>x.id===el.dataset.desmarcar);
+      if (!r) return;
+      if (!confirm('Desmarcar esta reunião como não realizada?')) return;
+      r.realizada = false;
+      r.notas = '';
+      r.proxPassos = '';
+      showToast('Reunião desmarcada');
+      scheduleSave();
+      render();
     });
   });
 
