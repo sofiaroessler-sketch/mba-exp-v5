@@ -1877,7 +1877,7 @@ function buildDetailReunioes(a) {
           <div style="display:flex;gap:5px">
             ${!r.realizada ? `<button class="btn btn-primary btn-xs" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>` : `<button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-desmarcar="${r.id}" data-aluno-id="${a.id}">Desmarcar</button>`}
             <button class="btn btn-ghost btn-xs" data-reagendar="${r.id}" data-aluno-id="${a.id}">Reagendar</button>
-            <button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-del-reuniao="${r.id}" data-aluno-id="${a.id}">${I.trash}</button>
+            <button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" onclick="event.stopPropagation();delReuniao('${r.id}','${a.id}')">${I.trash}</button>
           </div>
         </div>
         ${r.realizada && r.notas ? `<div style="font-size:12.5px;color:var(--t3);margin:6px 0;line-height:1.6">${r.notas}</div>` : ''}
@@ -2082,7 +2082,8 @@ function buildModalNovaReuniao() {
     <div class="field-row">
       <div class="field"><label class="lbl">Tipo *</label><select class="inp" id="m-reu-tipo"><option value="">Selecione</option>${tipos}</select></div>
       <div class="field"><label class="lbl">Data *</label><input class="inp" type="date" id="m-reu-data"></div>
-      <div class="field"><label class="lbl">Horário</label><input class="inp" type="time" id="m-reu-hora" placeholder="00:00"></div>
+      <div class="field"><label class="lbl">Horário início</label><input class="inp" type="time" id="m-reu-hora" placeholder="00:00"></div>
+      <div class="field"><label class="lbl">Horário término</label><input class="inp" type="time" id="m-reu-hora-fim" placeholder="00:00"></div>
     </div>
     <div class="field">
       <label class="lbl">Responsável pela reunião</label>
@@ -3108,9 +3109,10 @@ function salvarReuniao() {
   const medInt  = document.getElementById('m-reu-medint')?.value || '';
   const respId  = document.getElementById('m-reu-resp')?.value || '';
   const hora = document.getElementById('m-reu-hora')?.value||'';
+  const horaFim = document.getElementById('m-reu-hora-fim')?.value||'';
   const reu = {
     id: 'r_' + Date.now(),
-    tipo, data, hora,
+    tipo, data, hora, horaFim,
     responsavelId: respId,
     medicoInt: medInt,
     realizada: false,
@@ -3236,6 +3238,16 @@ function salvarNotas() {
   scheduleSave(); }
 }
 
+
+function delReuniao(reuniaoId, alunoId) {
+  if (!confirm('Apagar esta reunião permanentemente?')) return;
+  const a = state.alunos.find(x=>x.id===alunoId);
+  if (!a) return;
+  a.reunioes = (a.reunioes||[]).filter(r=>r.id!==reuniaoId);
+  showToast('Reunião apagada');
+  scheduleSave();
+  render();
+}
 
 function salvarReuniaoCalendario() {
   const alunoId = document.getElementById('m-rc-aluno')?.value;
