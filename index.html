@@ -1875,8 +1875,8 @@ function buildDetailReunioes(a) {
             ${!r.realizada ? `<span class="pill pill-blue" style="font-size:9.5px;margin-left:8px">Agendada</span>` : `<span class="pill pill-green" style="font-size:9.5px;margin-left:8px">Realizada</span>`}
           </div>
           <div style="display:flex;gap:5px">
-            ${(!r.realizada && (isBruna()||isGod()||(r.tipo&&r.tipo.includes('1:1')))) ? `<button class="btn btn-primary btn-xs" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>` : ''}
-            ${(isBruna()||isGod()||(r.tipo&&r.tipo.includes('1:1'))) ? `<button class="btn btn-ghost btn-xs" data-reagendar="${r.id}" data-aluno-id="${a.id}">Reagendar</button>` : ''}
+            ${!r.realizada ? `<button class="btn btn-primary btn-xs" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>` : ''}
+            <button class="btn btn-ghost btn-xs" data-reagendar="${r.id}" data-aluno-id="${a.id}">Reagendar</button>
           </div>
         </div>
         ${r.realizada && r.notas ? `<div style="font-size:12.5px;color:var(--t3);margin:6px 0;line-height:1.6">${r.notas}</div>` : ''}
@@ -1921,6 +1921,7 @@ function buildModal() {
   if (m.type === 'nova-tarefa') return buildModalNovaTarefa();
   if (m.type === 'nova-reuniao') return buildModalNovaReuniao();
   if (m.type === 'marcar-aula') return buildModalMarcarAula();
+  if (m.type === 'nova-reuniao-calendario') return buildModalNovaReuniaoCalendario();
   if (m.type === 'reagendar') return buildModalReagendar();
   if (m.type === 'realizar')  return buildModalRealizarReuniao();
   return '';
@@ -2129,9 +2130,68 @@ function buildModalMarcarAula() {
   `);
 }
 
+
+function buildModalNovaReuniaoCalendario() {
+  const tipos = REUNIAO_TIPOS.map(t=>`<option value="${t}">${t}</option>`).join('');
+  const uid = state.user?.id;
+  // Alunos do usuário logado (responsavel = user name) ou todos se god/bruna
+  const meusAlunos = (isGod()||isBruna())
+    ? state.alunos.filter(a=>a.status==='ativo')
+    : state.alunos.filter(a=>a.status==='ativo' && a.responsavel===state.user?.name);
+
+  return `
+  <div class="overlay" id="modal-overlay">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-hdr">
+        <div class="modal-title">Nova Reunião</div>
+        <button class="btn-icon" data-close-modal>${I.x}</button>
+      </div>
+      <div class="modal-body-scroll">
+        <div class="field">
+          <label class="lbl">Médico *</label>
+          <select class="inp" id="m-rc-aluno">
+            <option value="">Selecione um médico</option>
+            ${state.alunos.filter(a=>a.status==='ativo').map(a=>`
+              <option value="${a.id}" ${meusAlunos.find(x=>x.id===a.id)?'':'style="color:var(--t4)"'}>${a.nome}${a.turma?' ('+a.turma+')':''}</option>
+            `).join('')}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="lbl">Tipo *</label><select class="inp" id="m-rc-tipo"><option value="">Selecione</option>${tipos}</select></div>
+          <div class="field"><label class="lbl">Data *</label><input class="inp" type="date" id="m-rc-data" value="${now()}"></div>
+          <div class="field"><label class="lbl">Horário</label><input class="inp" type="time" id="m-rc-hora"></div>
+        </div>
+        <div class="field">
+          <label class="lbl">Responsável pela reunião</label>
+          <select class="inp" id="m-rc-resp">
+            <option value="">— Não definido —</option>
+            ${state.profiles.filter(p=>p.id!=='admin').map(p=>`<option value="${p.id}" ${p.id===uid?'selected':''}>${p.name}</option>`).join('')}
+          </select>
+        </div>
+        <div style="margin-top:8px;padding:10px 12px;background:var(--brand-dim);border:1px solid rgba(99,102,241,.2);border-radius:var(--r);font-size:12px;color:var(--brand-h)">
+          A reunião aparecerá no calendário e será enviada para o Google Agenda do responsável automaticamente.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+        <button class="btn btn-primary" data-action="salvar-reuniao-calendario">Agendar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function buildModalReagendar() {
+  const m = state.modal;
+  const a = state.alunos.find(x=>x.id===m?.alunoId);
+  const r = (a?.reunioes||[]).find(x=>x.id===m?.reuniaoId);
   return mWrap('Reagendar Reunião', `
-    <div class="field"><label class="lbl">Nova data</label><input class="inp" type="date" id="m-reag-data" value="${now()}"></div>
+    <div style="font-size:13px;color:var(--t4);margin-bottom:14px">
+      ${r ? `<strong style="color:var(--t1)">${r.tipo}</strong> — ${a?.nome||''}` : ''}
+    </div>
+    <div class="field-row">
+      <div class="field"><label class="lbl">Nova data *</label><input class="inp" type="date" id="m-reag-data" value="${r?.data||now()}"></div>
+      <div class="field"><label class="lbl">Horário</label><input class="inp" type="time" id="m-reag-hora" value="${r?.hora||''}"></div>
+    </div>
   `, `
     <button class="btn btn-ghost" data-close-modal>Cancelar</button>
     <button class="btn btn-primary" data-action="salvar-reagendar">Confirmar</button>
@@ -2284,6 +2344,7 @@ function attachEvents() {
       if (a === 'novo-medico-turma') { state.modal = {type:'novo-medico', preTurma: state.selTurma}; render(); }
       if (a === 'nova-tarefa') { state.modal = {type:'nova-tarefa'}; render(); }
       if (a === 'nova-reuniao') { state.modal = {type:'nova-reuniao'}; render(); }
+      if (a === 'nova-reuniao-calendario') { state.modal = {type:'nova-reuniao-calendario'}; render(); }
       if (a === 'marcar-aula') { state.modal = {type:'marcar-aula'}; render(); }
       if (a === 'editar-aluno') { state.editandoAluno=true; state.editForm={}; state.alunoTab='info'; render(); }
       if (a === 'cancelar-edicao') { state.editandoAluno=false; state.editForm={}; render(); }
@@ -2303,6 +2364,7 @@ function attachEvents() {
       if (a === 'salvar-alocar-turma') salvarAlocarTurma();
       if (a === 'salvar-logcs') salvarLogCS();
       if (a === 'salvar-notas') salvarNotas();
+      if (a === 'salvar-reuniao-calendario') salvarReuniaoCalendario();
       if (a === 'salvar-reagendar')    salvarReagendar();
       if (a === 'novo-okr')  { state.modal={type:'novo-okr', alunoId:el.dataset.alunoId}; render(); }
       if (a === 'salvar-okr') salvarOKR();
@@ -3141,14 +3203,43 @@ function salvarNotas() {
   scheduleSave(); }
 }
 
+
+function salvarReuniaoCalendario() {
+  const alunoId = document.getElementById('m-rc-aluno')?.value;
+  const tipo    = document.getElementById('m-rc-tipo')?.value;
+  const data    = document.getElementById('m-rc-data')?.value;
+  const hora    = document.getElementById('m-rc-hora')?.value||'';
+  const respId  = document.getElementById('m-rc-resp')?.value||'';
+  if (!alunoId) return showToast('Selecione um médico', 'err');
+  if (!tipo)    return showToast('Selecione o tipo', 'err');
+  if (!data)    return showToast('Informe a data', 'err');
+  const a = state.alunos.find(x=>x.id===alunoId);
+  if (!a) return;
+  if (!a.reunioes) a.reunioes = [];
+  const reu = {
+    id: 'r_' + Date.now(),
+    tipo, data, hora,
+    responsavelId: respId,
+    realizada: false,
+    notas: '',
+    proxPassos: '',
+  };
+  a.reunioes.push(reu);
+  state.modal = null;
+  showToast('Reunião agendada para ' + fmt(data));
+  scheduleSave();
+  render();
+}
+
 function salvarReagendar() {
   const m = state.modal;
   const novaData = document.getElementById('m-reag-data')?.value;
   if (!novaData) return showToast('Informe a data', 'err');
+  const novaHora = document.getElementById('m-reag-hora')?.value||'';
   const a = state.alunos.find(x=>x.id===m.alunoId);
   if (a) {
     const r = (a.reunioes||[]).find(x=>x.id===m.reuniaoId);
-    if (r) r.data = novaData;
+    if (r) { r.data = novaData; r.hora = novaHora; }
   }
   state.modal = null;
   showToast('Reunião reagendada');
@@ -3396,7 +3487,10 @@ function buildCalendarioPage() {
         <div class="page-title">Calendário</div>
         <div class="page-sub">${myAulas.length} aula${myAulas.length!==1?'s':''} agendada${myAulas.length!==1?'s':''}</div>
       </div>
-      ${isGod() || isBruna() ? `<button class="btn btn-primary" data-action="marcar-aula">${I.plus} Marcar Aula</button>` : ''}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" data-action="nova-reuniao-calendario">${I.plus} Nova Reunião</button>
+        ${isGod() || isBruna() ? `<button class="btn btn-ghost" data-action="marcar-aula">${I.plus} Marcar Aula</button>` : ''}
+      </div>
     </div>
     <div class="page-body">
 
