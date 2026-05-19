@@ -923,10 +923,7 @@ function buildSidebar() {
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
         ${I.switchIcon} Trocar perfil
       </button>
-      <button class="btn" id="gcal-connect-btn" style="width:100%;justify-content:center;font-size:11px;padding:6px 10px;gap:6px;${gcalIsConnected(u.id)?'background:var(--green-bg);color:var(--green-t);border:1px solid var(--green-t)':'background:var(--bg-t);color:var(--t3);border:1px solid var(--border)'}" data-gcal-connect>
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        ${gcalIsConnected(u.id) ? '✓ Google Calendar conectado' : 'Conectar Google Calendar'}
-      </button>
+
     </div>
   `;
 }
@@ -1917,7 +1914,6 @@ function buildModal() {
   if (m.type === 'novo-okr')               return buildModalNovoOKR();
   if (m.type === 'novo-kpi')               return buildModalNovoKPI();
   if (m.type === 'edit-profile')    return buildModalEditProfile(m.profile);
-  if (m.type === 'set-credentials') return buildModalSetCredentials(m.profile);
   if (m.type === 'novo-usuario')    return buildModalNovoUsuario();
   if (m.type === 'edit-turma')      return buildModalEditTurma(m.turma);
   if (m.type === 'nova-turma') return buildModalNovaTurma();
@@ -2202,23 +2198,7 @@ function attachEvents() {
   });
 
   // Logout
-  // Google Calendar connect
-  document.querySelector('[data-gcal-connect]')?.addEventListener('click', async () => {
-    const uid = state.user?.id;
-    if (!uid) return;
-    if (gcalIsConnected(uid)) {
-      showToast('Google Calendar já conectado! ✓', 'ok');
-      return;
-    }
-    showToast('Abrindo autorização do Google...', 'ok');
-    try {
-      await gcalConnect(uid);
-      showToast('Google Calendar conectado com sucesso! ✓', 'ok');
-      render();
-    } catch(e) {
-      showToast('Erro ao conectar: ' + e.message, 'err');
-    }
-  });
+
 
   document.querySelector('[data-logout]')?.addEventListener('click', () => {
     state.user = null; state.selAluno = null; state.selTurma = null; state.filtroMedicosSet = false; state.filtroMedicos = 'todos';
@@ -2867,53 +2847,7 @@ function attachEvents() {
   });
 
   // Admin: edit profile
-  // Set credentials button
-  document.querySelectorAll('[data-set-credentials]').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      const p = state.profiles.find(x=>x.id===el.dataset.setCredentials);
-      if (p) { state.modal = {type:'set-credentials', profile:p}; render(); }
-    });
-  });
 
-  // Save credentials handler
-  document.getElementById('btn-sc-save')?.addEventListener('click', async () => {
-    const pid   = document.getElementById('btn-sc-save').dataset.profileId;
-    const email = document.getElementById('sc-email')?.value.trim();
-    const pwd   = document.getElementById('sc-pwd')?.value;
-    const errEl = document.getElementById('sc-err');
-    if (!email || !email.includes('@')) { errEl.textContent='Email inválido'; errEl.style.display='block'; return; }
-    if (!pwd || pwd.length < 6) { errEl.textContent='Senha precisa ter ao menos 6 caracteres'; errEl.style.display='block'; return; }
-    errEl.style.display='none';
-    const btn = document.getElementById('btn-sc-save');
-    btn.textContent = 'Salvando...';
-    try {
-      const p = state.profiles.find(x=>x.id===pid);
-      if (!p) throw new Error('Usuário não encontrado');
-      let sbId = p.sbId;
-      if (sbId) {
-        // Usuário já existe no Auth — atualizar email e senha
-        await sbUpdateUserAdmin(sbId, { email, password: pwd, name: p.name, role: p.role||'consultor' });
-      } else {
-        // Criar usuário novo no Auth com email confirmado e senha já definida
-        const res = await sbInviteUser(email, p.name, p.role||'consultor');
-        // update password separately since create already sets it via edge fn
-        sbId = res.id;
-      }
-      p.email = email;
-      p.sbId  = sbId;
-      const pp = PROFILES.find(x=>x.id===pid);
-      if (pp) pp.email = email;
-      state.modal = null;
-      scheduleSave();
-      showToast(`Acesso de ${p.name} configurado ✓`, 'ok');
-      render();
-    } catch(e) {
-      errEl.textContent = e.message;
-      errEl.style.display = 'block';
-      btn.textContent = 'Salvar acesso';
-    }
-  });
 
   document.querySelectorAll('[data-edit-profile]').forEach(el => {
     el.addEventListener('click', e => {
@@ -3890,36 +3824,7 @@ function buildAdminRelatorio() {
   </div>`;
 }
 
-function buildModalSetCredentials(p) {
-  return `
-  <div class="overlay" id="modal-overlay">
-    <div class="modal" style="max-width:420px" onclick="event.stopPropagation()">
-      <div class="modal-hdr">
-        <div class="modal-title">Definir acesso — ${p.name}</div>
-        <button class="btn-icon" data-close-modal>${I.x}</button>
-      </div>
-      <div class="modal-body">
-        <div style="font-size:12.5px;color:var(--t4);margin-bottom:16px;padding:10px 12px;background:var(--bg-t);border-radius:var(--r);border:1px solid var(--border)">
-          Configure o email e a senha que <strong style="color:var(--t2)">${p.name}</strong> vai usar para entrar na plataforma. Informe as credenciais ao usuário diretamente.
-        </div>
-        <div class="field">
-          <label class="lbl">Email *</label>
-          <input class="inp" type="email" id="sc-email" value="${p.email||''}" placeholder="nome@email.com" autocomplete="off">
-        </div>
-        <div class="field">
-          <label class="lbl">Senha *</label>
-          <input class="inp" type="text" id="sc-pwd" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
-          <span style="font-size:11px;color:var(--t4);margin-top:4px;display:block">O usuário poderá trocar a senha após o primeiro login.</span>
-        </div>
-        <div id="sc-err" style="display:none" class="login-err"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close-modal>Cancelar</button>
-        <button class="btn btn-primary" id="btn-sc-save" data-profile-id="${p.id}">Salvar acesso</button>
-      </div>
-    </div>
-  </div>`;
-}
+
 
 function buildModalEditProfile(p) {
   const ROLES = ['consultor','cs','admin'];
