@@ -1877,6 +1877,7 @@ function buildDetailReunioes(a) {
           <div style="display:flex;gap:5px">
             ${!r.realizada ? `<button class="btn btn-primary btn-xs" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>` : `<button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-desmarcar="${r.id}" data-aluno-id="${a.id}">Desmarcar</button>`}
             <button class="btn btn-ghost btn-xs" data-reagendar="${r.id}" data-aluno-id="${a.id}">Reagendar</button>
+            <button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-del-reuniao="${r.id}" data-aluno-id="${a.id}">${I.trash}</button>
           </div>
         </div>
         ${r.realizada && r.notas ? `<div style="font-size:12.5px;color:var(--t3);margin:6px 0;line-height:1.6">${r.notas}</div>` : ''}
@@ -2968,6 +2969,20 @@ function attachEvents() {
       state.alunos = state.alunos.filter(a=>a.id!==el.dataset.delAluno);
       showToast('Médico removido');
   scheduleSave();
+    });
+  });
+
+  // Apagar reunião
+  document.querySelectorAll('[data-del-reuniao]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!confirm('Apagar esta reunião permanentemente?')) return;
+      const a = state.alunos.find(x=>x.id===el.dataset.alunoId);
+      if (!a) return;
+      a.reunioes = (a.reunioes||[]).filter(r=>r.id!==el.dataset.delReuniao);
+      showToast('Reunião apagada');
+      scheduleSave();
+      render();
     });
   });
 
