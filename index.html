@@ -161,7 +161,7 @@ textarea.inp{resize:vertical;min-height:80px;line-height:1.6}
 .check-label.done{color:var(--t4);text-decoration:line-through}
 
 /* ═══ TOAST ═══ */
-.toast{position:fixed;bottom:24px;right:24px;background:var(--bg-t);border:1px solid var(--border2);border-radius:var(--r2);padding:12px 18px;font-size:13px;color:var(--t2);box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;animation:modalIn .2s ease;max-width:320px}
+.toast{position:fixed;top:24px;right:24px;background:var(--bg-t);border:1px solid var(--border2);border-radius:var(--r2);padding:12px 18px 12px 16px;font-size:13px;color:var(--t2);box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;animation:modalIn .2s ease;max-width:340px;display:flex;align-items:flex-start;gap:10px}
 .toast.ok{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08)}
 .toast.err{border-color:var(--red-b);background:var(--red-bg)}
 
@@ -850,8 +850,9 @@ function renderToast() {
   if (old) old.remove();
   if (state.toast) {
     const el = document.createElement('div');
-    el.className = 'toast ' + state.toast.type;
-    el.textContent = state.toast.msg;
+    el.className = 'toast ' + (state.toast.type || 'ok');
+    el.innerHTML = '<span style="flex:1">' + state.toast.msg + '</span>'
+      + '<button onclick="state.toast=null;renderToast()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0;margin-left:8px;flex-shrink:0">×</button>';
     document.body.appendChild(el);
   }
 }
@@ -863,7 +864,7 @@ function buildApp() {
     <div id="main">${buildMain()}</div>
     ${state.modal ? buildModal() : ''}
     ${state.selAluno ? buildDetailPanel() : ''}
-    ${state.toast ? `<div class="toast ${state.toast.type}">${state.toast.msg}</div>` : ''}
+    ${state.toast ? `<div class="toast ${state.toast.type||'ok'}"><span style="flex:1">${state.toast.msg}</span><button onclick="state.toast=null;renderToast()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0;margin-left:8px">×</button></div>` : ''}
   `;
 }
 
@@ -1216,18 +1217,7 @@ function buildCronograma(t, alunos) {
     return idx === nextIdx;
   }
 
-  // Render bloco0
-  const bloco0Html = bloco0Done && !state.expandedAulas[expandedKey]['bloco0']
-    ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
-        border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;
-        background:rgba(255,255,255,.02);opacity:.65;cursor:pointer" data-expand-aula="bloco0">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="color:var(--green);font-size:13px">✓</span>
-          <span style="font-size:13px;color:var(--t3);font-family:var(--fh);font-weight:500">Bloco 0 — Etapas Iniciais</span>
-        </div>
-        <span style="font-size:11px;color:var(--t4)">▼</span>
-      </div>`
-    : buildBloco0(t, alunos);
+  // Bloco 0 foi movido para o perfil do aluno
 
   // Render aulas — full controls for Bruna/god, read-only for others
   const canEditPresenca = isBruna() || isGod();
@@ -1237,7 +1227,7 @@ function buildCronograma(t, alunos) {
     return buildAulaSection(t, alunos, ad);
   }).join('');
 
-  return `<div>${bloco0Html}${aulasHtml}</div>`;
+  return `<div>${aulasHtml}</div>`;
 }
 
 function buildAulaSection(t, alunos, ad) {
@@ -1753,11 +1743,41 @@ function buildMedicoCard(a, clickable=true) {
 // ═══════════════════════════════════════════════════════
 // DETAIL PANEL (ALUNO)
 // ═══════════════════════════════════════════════════════
+function buildDetailEtapas(a) {
+  const et = state.etapas[a.id] || {};
+  const canEdit = isBruna() || isGod();
+  const etapasLabels = [
+    {id:'onb', label:'Reunião de Onboarding', desc:'Com o aluno e um médico responsável'},
+    {id:'fin', label:'Reunião Fin/Leads',     desc:'Com o engenheiro responsável'},
+    {id:'sec', label:'Treinamento da Secretária', desc:'Após a reunião Fin/Leads'},
+  ];
+  const rows = etapasLabels.map(function(e, idx) {
+    const done = et[e.id+'_done'];
+    // Check if previous step is done (for chain)
+    const prevDone = idx === 0 ? true : et[etapasLabels[idx-1].id+'_done'];
+    const disabled = !canEdit || (!done && !prevDone);
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">'
+      + '<button class="pres-btn ' + (done?'sim':'') + '" data-etapa="' + e.id + '" data-aluno-id="' + a.id + '" '
+      + (disabled ? 'disabled style="opacity:.4;cursor:default"' : '')
+      + '>' + (done ? '✓' : '—') + '</button>'
+      + '<div style="flex:1">'
+      + '<div style="font-size:13px;font-weight:600;color:' + (done?'var(--green)':'var(--t1)') + '">' + e.label + '</div>'
+      + '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + e.desc + '</div>'
+      + '</div>'
+      + (done ? '<span style="font-size:11px;color:var(--green)">✓ Concluído</span>' : (prevDone ? '<span style="font-size:11px;color:var(--brand-h)">Pendente</span>' : '<span style="font-size:11px;color:var(--t4)">Aguarda etapa anterior</span>'))
+      + '</div>';
+  }).join('');
+  return '<div style="padding:16px 0">'
+    + '<div style="font-size:12px;color:var(--t3);margin-bottom:16px">As etapas seguem uma ordem em cadeia. Marque cada uma ao ser concluída.</div>'
+    + rows
+    + '</div>';
+}
+
 function buildDetailPanel() {
   const a = state.alunos.find(x=>x.id===state.selAluno);
   if (!a) return '';
-  const tabs = ['info','aulas','reunioes','okrs','notas'];
-  const tabLabels = {info:'Informações',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
+  const tabs = ['info','aulas','reunioes','okrs','notas','etapas'];
+  const tabLabels = {info:'Informações',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas',etapas:'Etapas Iniciais'};
   return `
   <div class="detail-panel">
     <div class="detail-hdr">
@@ -1785,6 +1805,7 @@ function buildDetailPanel() {
       ${state.alunoTab==='reunioes' ? buildDetailReunioes(a) : ''}
       ${state.alunoTab==='okrs'  ? buildDetailOKRs(a)  : ''}
       ${state.alunoTab==='notas' ? buildDetailNotas(a) : ''}
+      ${state.alunoTab==='etapas' ? buildDetailEtapas(a) : ''}
     </div>
   </div>`;
 }
