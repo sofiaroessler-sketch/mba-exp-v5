@@ -405,6 +405,17 @@ async function loadStateFromDb() {
       if (d.aulaAberta)   state.aulaAberta   = d.aulaAberta;
       if (d.faltaLog)     state.faltaLog     = d.faltaLog;
       if (d.riscoCriteria) state.riscoCriteria = d.riscoCriteria;
+    // Detecta novos médicos e mostra toast
+    if (state.user && (isBruna() || isYgor())) {
+      const uid = state.user.id;
+      const lidas = state.notifLidas[uid] || [];
+      const novos = state.alunos.filter(a => a.status === 'ativo' && !a.turma && !lidas.includes(a.id));
+      if (novos.length > 0) {
+        state.toast = { msg: novos.length === 1
+          ? 'Novo médico adicionado: ' + novos[0].nome
+          : novos.length + ' novos médicos aguardam designação', type: 'info' };
+      }
+    }
       if (d.accessLog)      state.accessLog    = d.accessLog;
       if (d.profiles) {
         state.profiles = d.profiles;
@@ -1343,7 +1354,6 @@ function buildAulaSection(t, alunos, ad) {
 
 function buildBloco0(t, alunos) {
   const etapasLabels = [
-    {id:'forms', label:'Formulário de Onboarding enviado'},
     {id:'onb',   label:'Reunião de Onboarding'},
     {id:'fin',   label:'Reunião Fin/Leads'},
     {id:'sec',   label:'Treinamento da Secretária'},
@@ -1840,7 +1850,7 @@ function buildDetailInfo(a) {
     <div class="section-title">Dados Gerais</div>
     ${[
       ['Especialidade', a.especialidade],
-      ['Cidade', a.cidade],
+      ['Cidade', a.cidade || a.cidades_atendimento],
       ['WhatsApp', a.whatsapp],
       ['Início da turma', turmaObj?.inicio ? fmt(turmaObj.inicio) : null],
       ['Término previsto', turmaObj?.fim_previsto ? fmt(turmaObj.fim_previsto) : null],
@@ -2806,13 +2816,11 @@ function attachEvents() {
       scheduleSave();
       if (!wasDone) {
         // CHECK — create tasks for Bruna
-        if (etapa==='forms')                triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
-        if (etapa==='onb' && et.forms_done) triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst,     'bruna', addDays(now(),7));
-        if (etapa==='fin' && et.onb_done)   triggerTask('Treinamento da Secretária — '+nomeFirst,      'bruna', addDays(now(),7));
+        if (etapa==='onb') triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst,    'bruna', addDays(now(),7));
+        if (etapa==='fin') triggerTask('Treinamento da Secretária — '+nomeFirst,     'bruna', addDays(now(),7));
       } else {
         // UNCHECK — remove corresponding pending tasks
         const toRemove = {
-          forms: ['Marcar Reunião de Onboarding com '+nomeFirst, 'Onboarding: acompanhar forms de '+nomeFirst],
           onb:   ['Marcar Reunião Fin/Leads com '+nomeFirst],
           fin:   ['Treinamento da Secretária — '+nomeFirst],
           sec:   [],
