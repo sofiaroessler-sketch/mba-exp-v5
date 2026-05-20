@@ -2586,7 +2586,12 @@ function attachEvents() {
 
   // Search médicos
   document.getElementById('search-medicos')?.addEventListener('input', e => {
-    state.searchMedicos = e.target.value; render();
+    state.searchMedicos = e.target.value;
+    const val = e.target.value;
+    // Re-render mas restaura foco e cursor
+    render();
+    const el = document.getElementById('search-medicos');
+    if (el) { el.focus(); el.setSelectionRange(val.length, val.length); }
   });
 
   // Presença CYCLE: Presente→sim(green)→sim2(yellow)→off
