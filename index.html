@@ -1694,8 +1694,8 @@ function buildMedicoCard(a, clickable=true) {
 function buildDetailPanel() {
   const a = state.alunos.find(x=>x.id===state.selAluno);
   if (!a) return '';
-  const tabs = ['info','aulas','reunioes','okrs','notas'];
-  const tabLabels = {info:'Informações',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
+  const tabs = ['info','etapas','aulas','reunioes','okrs','notas'];
+  const tabLabels = {info:'Informações',etapas:'Etapas Iniciais',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
   return `
   <div class="detail-panel">
     <div class="detail-hdr">
@@ -1719,10 +1719,61 @@ function buildDetailPanel() {
     </div>
     <div class="detail-body">
       ${state.alunoTab==='info' ? buildDetailInfo(a) : ''}
+      ${state.alunoTab==='etapas' ? buildDetailEtapas(a) : ''}
       ${state.alunoTab==='aulas' ? buildDetailAulas(a) : ''}
       ${state.alunoTab==='reunioes' ? buildDetailReunioes(a) : ''}
       ${state.alunoTab==='okrs'  ? buildDetailOKRs(a)  : ''}
       ${state.alunoTab==='notas' ? buildDetailNotas(a) : ''}
+    </div>
+  </div>`;
+}
+
+function buildDetailEtapas(a) {
+  const et = state.etapas[a.id] || {};
+  const canEdit = isGod() || isBruna();
+  const etapas = [
+    {id:'forms', label:'Formulário de Onboarding enviado', desc:'Médico preencheu o formulário de diagnóstico'},
+    {id:'onb',   label:'Reunião de Onboarding',            desc:'Reunião inicial realizada com o consultor'},
+    {id:'fin',   label:'Reunião Fin/Leads',                desc:'Acesso às planilhas financeira e de leads'},
+    {id:'sec',   label:'Treinamento da Secretária',        desc:'Secretária treinada e integrada ao processo'},
+  ];
+  const totalDone = etapas.filter(e => et[e.id+'_done']).length;
+  const pct = Math.round((totalDone / etapas.length) * 100);
+
+  return `
+  <div>
+    <div style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--t4)">${totalDone} de ${etapas.length} etapas concluídas</span>
+        <span style="font-size:12px;font-weight:600;color:${pct===100?'var(--green)':'var(--brand-h)'}">${pct}%</span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':'var(--brand-h)'};border-radius:3px;transition:width .3s"></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${etapas.map((e,i) => {
+        const done = !!et[e.id+'_done'];
+        return `
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r2);border:1px solid ${done?'rgba(34,197,94,.25)':'var(--border)'};background:${done?'rgba(34,197,94,.05)':'var(--bg-s)'}">
+          <div style="width:28px;height:28px;border-radius:50%;background:${done?'var(--green)':'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:${done?'#fff':'var(--t4)'}">
+            ${done ? '✓' : (i+1)}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13.5px;font-weight:600;color:${done?'var(--t1)':'var(--t2)'}">${e.label}</div>
+            <div style="font-size:11.5px;color:var(--t4);margin-top:2px">${e.desc}</div>
+          </div>
+          ${canEdit ? `
+          <button class="btn btn-sm ${done?'btn-ghost':''}" 
+            style="${done?'color:var(--t4)':''}"
+            data-etapa="${e.id}" data-aluno-id="${a.id}">
+            ${done ? 'Desfazer' : 'Marcar'}
+          </button>` : `
+          <span style="font-size:11px;color:${done?'var(--green)':'var(--t4)'}">
+            ${done ? 'Concluído' : 'Pendente'}
+          </span>`}
+        </div>`;
+      }).join('')}
     </div>
   </div>`;
 }
