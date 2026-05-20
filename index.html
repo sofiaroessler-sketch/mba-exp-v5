@@ -2603,6 +2603,11 @@ function attachEvents() {
     });
   });
 
+  document.getElementById('search-admin-medicos')?.addEventListener('input', e => {
+    state.searchAdminMedicos = e.target.value;
+    render();
+  });
+
   // Presença CYCLE: Presente→sim(green)→sim2(yellow)→off
   document.querySelectorAll('[data-pres-cycle]').forEach(el => {
     el.addEventListener('click', e => {
@@ -3913,6 +3918,15 @@ function buildAdminTurmas() {
 // ── Médicos Admin ──
 function buildAdminMedicos() {
   const rc = state.riscoCriteria||{maxFaltas:2, maxConsec:2, maxConsecLink:3};
+  const q = (state.searchAdminMedicos||'').toLowerCase();
+  const lista = q
+    ? state.alunos.filter(a =>
+        a.nome.toLowerCase().includes(q) ||
+        (a.turma||'').toLowerCase().includes(q) ||
+        (a.responsavel||'').toLowerCase().includes(q) ||
+        (a.status||'').toLowerCase().includes(q)
+      )
+    : state.alunos;
   return `
   <div>
     <!-- Critérios de risco -->
@@ -3926,8 +3940,12 @@ function buildAdminMedicos() {
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div class="section-title" style="margin:0">Gerenciar Médicos</div>
-      <div style="display:flex;gap:8px">
+      <div class="section-title" style="margin:0">Gerenciar Médicos <span style="font-size:12px;font-weight:400;color:var(--t4)">(${lista.length} de ${state.alunos.length})</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="position:relative">
+          <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
+          <input class="inp" id="search-admin-medicos" placeholder="Buscar..." value="${state.searchAdminMedicos||''}" style="padding-left:32px;width:190px;padding-top:6px;padding-bottom:6px">
+        </div>
         <button class="btn btn-sm" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-action="apagar-todos-medicos">${I.trash} Apagar Tudo</button>
         <button class="btn btn-primary btn-sm" data-action="novo-medico">${I.plus} Novo Médico</button>
       </div>
@@ -3936,7 +3954,7 @@ function buildAdminMedicos() {
       <table class="tbl">
         <thead><tr><th>Nome</th><th>Turma</th><th>Responsável</th><th>Status</th><th>Presença</th><th style="text-align:center">Ações</th></tr></thead>
         <tbody>
-          ${state.alunos.map(a => {
+          ${lista.map(a => {
             const taxaCls = a.taxa_presenca>=75?'pill-green':a.taxa_presenca>=50?'pill-amber':'pill-red';
             return `<tr>
               <td style="font-weight:500;color:var(--t1)">${a.nome}</td>
