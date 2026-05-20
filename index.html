@@ -2587,11 +2587,12 @@ function attachEvents() {
   // Search médicos
   document.getElementById('search-medicos')?.addEventListener('input', e => {
     state.searchMedicos = e.target.value;
-    const val = e.target.value;
-    // Re-render mas restaura foco e cursor
-    render();
-    const el = document.getElementById('search-medicos');
-    if (el) { el.focus(); el.setSelectionRange(val.length, val.length); }
+    const q = state.searchMedicos.toLowerCase();
+    // Filtra os cards diretamente no DOM sem re-render completo
+    document.querySelectorAll('.page-body .card').forEach(card => {
+      const text = card.textContent.toLowerCase();
+      card.style.display = (!q || text.includes(q)) ? '' : 'none';
+    });
   });
 
   // Presença CYCLE: Presente→sim(green)→sim2(yellow)→off
