@@ -21,8 +21,9 @@
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t1);font-family:var(--fb);font-size:16px;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font-family:var(--fb);outline:none;font-size:14px}
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:2px}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.38)}
 ::-webkit-scrollbar-track{background:transparent}
 
 /* ═══ LAYOUT ═══ */
@@ -161,7 +162,7 @@ textarea.inp{resize:vertical;min-height:80px;line-height:1.6}
 .check-label.done{color:var(--t4);text-decoration:line-through}
 
 /* ═══ TOAST ═══ */
-.toast{position:fixed;top:24px;right:24px;background:var(--bg-t);border:1px solid var(--border2);border-radius:var(--r2);padding:12px 18px 12px 16px;font-size:13px;color:var(--t2);box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;animation:modalIn .2s ease;max-width:340px;display:flex;align-items:flex-start;gap:10px}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--bg-t);border:1px solid var(--border2);border-radius:var(--r2);padding:12px 18px;font-size:13px;color:var(--t2);box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;animation:modalIn .2s ease;max-width:320px}
 .toast.ok{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08)}
 .toast.err{border-color:var(--red-b);background:var(--red-bg)}
 
@@ -405,17 +406,6 @@ async function loadStateFromDb() {
       if (d.aulaAberta)   state.aulaAberta   = d.aulaAberta;
       if (d.faltaLog)     state.faltaLog     = d.faltaLog;
       if (d.riscoCriteria) state.riscoCriteria = d.riscoCriteria;
-    // Detecta novos médicos e mostra toast
-    if (state.user && (isBruna() || isYgor())) {
-      const uid = state.user.id;
-      const lidas = state.notifLidas[uid] || [];
-      const novos = state.alunos.filter(a => a.status === 'ativo' && !a.turma && !lidas.includes(a.id));
-      if (novos.length > 0) {
-        state.toast = { msg: novos.length === 1
-          ? 'Novo médico adicionado: ' + novos[0].nome
-          : novos.length + ' novos médicos aguardam designação', type: 'info' };
-      }
-    }
       if (d.accessLog)      state.accessLog    = d.accessLog;
       if (d.profiles) {
         state.profiles = d.profiles;
@@ -691,8 +681,6 @@ let state = {
   ],
   faltaLog: {"a4":{"11_3":["nao"],"a7":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a5":{"a11":["nao"],"11_3":["nao"],"11_4":["nao"],"a12":["nao"],"11_1":["nao"]},"a6":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a10":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a11":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a12":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a13":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a14":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a15":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a5":["nao"],"11_1":["nao"],"a3":["nao"]},"a16":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_1":["nao"]},"a18":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_1":["nao"]},"a20":{"a7":["nao"],"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a5":["nao"],"11_1":["nao"],"a3":["nao"]},"a21":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_1":["nao"],"a4":["nao"]},"a22":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a6":["nao"],"11_1":["nao"],"a4":["nao"]},"a23":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a6":["nao"],"11_1":["nao"]},"a24":{"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a25":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"a6":["nao"],"a5":["nao"],"a3":["nao"],"a4":["nao"],"11_1":["nao"]},"a26":{"11_3":["nao"],"11_2":["nao"],"a10_1":["nao"],"11_1":["nao"]},"a27":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"a6":["nao"],"a5":["nao"],"11_1":["nao"]},"a28":{"11_3":["nao"],"11_2":["nao"],"a3":["nao"],"11_1":["nao"]},"a29":{"11_3":["nao"],"11_2":["nao"],"a4":["nao"],"a2":["nao"],"11_1":["nao"]},"a31":{"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a32":{"11_3":["nao"],"11_2":["nao"],"a3":["nao"],"a1":["nao"],"a4":["nao"],"11_1":["nao"]},"a33":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a35":{"11_3":["nao"],"11_2":["nao"],"a6":["nao"],"a5":["nao"],"a3":["nao"],"a4":["nao"],"a2":["nao"],"11_1":["nao"]},"a38":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a39":{"11_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a41":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"],"a3":["nao"]},"a42":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a43":{"11_2":["nao"],"a10_2":["nao"],"a5":["nao"],"11_1":["nao"]},"a44":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"a5":["nao"],"a1":["nao"],"11_1":["nao"],"a2":["nao"],"a3":["nao"]},"a45":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"],"a2":["nao"],"a3":["nao"]},"a47":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a48":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a49":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"]},"a50":{"11_2":["nao"],"a10_1":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"],"a3":["nao"]},"a51":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a2":["nao"]},"a52":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"]},"a54":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a55":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a56":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"a1":["nao"],"11_1":["nao"]},"a57":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a59":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"a1":["nao"],"11_1":["nao"]},"a60":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a61":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"a1":["nao"],"11_1":["nao"]},"a62":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a63":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a64":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a65":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a66":{"11_0":["nao"],"11_1":["nao"]},"a67":{"11_0":["nao"],"11_1":["nao"]},"a68":{"11_0":["nao"],"11_1":["nao"]},"a69":{"11_0":["nao"],"11_1":["nao"]},"a71":{"11_0":["nao"],"11_1":["nao"]},"a72":{"11_0":["nao"],"a2":["nao"],"11_1":["nao"]},"a73":{"11_0":["nao"],"11_1":["nao"]},"a74":{"11_0":["nao"],"11_1":["nao"]},"a75":{"11_0":["nao"],"11_1":["nao"]},"a76":{"11_0":["nao"],"11_1":["nao"]},"a77":{"11_0":["nao"],"11_1":["nao"]},"a79":{"11_0":["nao"],"11_1":["nao"]},"a80":{"11_0":["nao"],"11_1":["nao"]},"a81":{"11_0":["nao"],"11_1":["nao"]},"a82":{"11_0":["nao"],"11_1":["nao"]},"a83":{"11_0":["nao"],"11_1":["nao"]},"a84":{"11_0":["nao"],"11_1":["nao"]},"a85":{"11_0":["nao"],"11_1":["nao"]},"a86":{"11_0":["nao"],"11_1":["nao"]},"a87":{"11_0":["nao"],"11_1":["nao"]},"a89":{"11_0":["nao"],"11_1":["nao"]},"a90":{"11_0":["nao"]},"a91":{"11_0":["nao"]},"a92":{"11_0":["nao"]},"a93":{"11_0":["nao"]},"a94":{"11_0":["nao"]},"a95":{"11_0":["nao"]},"a96":{"11_0":["nao"]},"a97":{"11_0":["nao"]},"a98":{"11_0":["nao"]},"a99":{"11_0":["nao"]},"a101":{"11_0":["nao"]},"a102":{"11_0":["nao"]},"a103":{"11_0":["nao"]},"a104":{"11_0":["nao"]},"a105":{"11_0":["nao"]},"a106":{"11_0":["nao"],"11_1":["nao"]},"a107":{"11_0":["nao"],"11_1":["nao"]},"a108":{"11_0":["nao"],"11_1":["nao"]},"a109":{"11_0":["nao"],"11_1":["nao"]},"a110":{"11_0":["nao"],"11_1":["nao"]},"a111":{"11_0":["nao"],"11_1":["nao"]},"a112":{"11_0":["nao"],"11_1":["nao"]},"a113":{"11_0":["nao"],"11_1":["nao"]},"a114":{"11_0":["nao"],"11_1":["nao"]},"a115":{"11_0":["nao"],"11_1":["nao"]},"a116":{"11_0":["nao"],"11_1":["nao"]},"a117":{"11_0":["nao"],"11_1":["nao"]},"a118":{"11_0":["nao"],"a4":["nao"],"11_1":["nao"]},"a119":{"11_0":["nao"],"11_1":["nao"]},"a120":{"11_0":["nao"],"11_1":["nao"]},"a121":{"11_0":["nao"],"a4":["nao"],"11_1":["nao"]},"a122":{"11_0":["nao"],"11_1":["nao"]},"a123":{"11_0":["nao"]},"a125":{"11_0":["nao"]},"a126":{"11_0":["nao"]},"a127":{"11_0":["nao"]},"a128":{"11_0":["nao"]},"a129":{"11_0":["nao"]},"a130":{"11_0":["nao"]},"a131":{"11_0":["nao"]},"a132":{"11_0":["nao"]},"a133":{"11_0":["nao"]},"a134":{"11_0":["nao"]},"a135":{"11_0":["nao"]},"a136":{"11_0":["nao"]},"a137":{"11_0":["nao"]}},
   riscoCriteria: {maxFaltas:2, maxConsec:2, maxConsecLink:3},
-  notifLidas: {},
-  showNotifPanel: false,
 };
 
 function buildInitTurmas() { return [{"id":"T1","nome":"T1","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T2","nome":"T2","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T3","nome":"T3","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T4","nome":"T4","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T5","nome":"T5","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T6","nome":"T6","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T7","nome":"T7","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T8","nome":"T8","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T9","nome":"T9","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T10","nome":"T10","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T11","nome":"T11","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T12","nome":"T12","inicio":"","fim_previsto":"","concluida":false,"engeId":""}]; }
@@ -850,9 +838,8 @@ function renderToast() {
   if (old) old.remove();
   if (state.toast) {
     const el = document.createElement('div');
-    el.className = 'toast ' + (state.toast.type || 'ok');
-    el.innerHTML = '<span style="flex:1">' + state.toast.msg + '</span>'
-      + '<button onclick="state.toast=null;renderToast()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0;margin-left:8px;flex-shrink:0">×</button>';
+    el.className = 'toast ' + state.toast.type;
+    el.textContent = state.toast.msg;
     document.body.appendChild(el);
   }
 }
@@ -864,7 +851,7 @@ function buildApp() {
     <div id="main">${buildMain()}</div>
     ${state.modal ? buildModal() : ''}
     ${state.selAluno ? buildDetailPanel() : ''}
-    ${state.toast ? `<div class="toast ${state.toast.type||'ok'}"><span style="flex:1">${state.toast.msg}</span><button onclick="state.toast=null;renderToast()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0;margin-left:8px">×</button></div>` : ''}
+    ${state.toast ? `<div class="toast ${state.toast.type}">${state.toast.msg}</div>` : ''}
   `;
 }
 
@@ -898,50 +885,6 @@ function buildLoginPage() {
 // ═══════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════
-function getNotificacoes() {
-  if (!state.user) return [];
-  const uid = state.user.id;
-  const lidas = state.notifLidas[uid] || [];
-  return state.alunos
-    .filter(a => a.status === 'ativo' && !a.turma && !lidas.includes(a.id))
-    .map(a => ({ alunoId: a.id, nome: a.nome }));
-}
-
-function buildSininho() {
-  if (!isBruna() && !isYgor()) return '';
-  const notifs = getNotificacoes();
-  const count = notifs.length;
-  const badge = count > 0
-    ? '<span style="background:#e53e3e;color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:auto">' + count + '</span>'
-    : '';
-  let html = '<div style="display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;padding:6px 8px;border-radius:8px" data-toggle-notif>'
-    + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t2);flex-shrink:0"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
-    + '<span style="font-size:13px;color:var(--t2)">Notificações</span>'
-    + badge
-    + '</div>';
-  if (state.showNotifPanel) {
-    html += buildNotifPanel(notifs);
-  }
-  return html;
-}
-
-function buildNotifPanel(notifs) {
-  if (notifs.length === 0) {
-    return '<div style="background:var(--bg-s);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:4px;font-size:13px;color:var(--t3);text-align:center">Sem notificações pendentes</div>';
-  }
-  const msg = isBruna()
-    ? 'Clique para ver o perfil e designar turma'
-    : 'Designar turma, engenheiro e médico responsável';
-  const items = notifs.map(function(n) {
-    return '<div style="padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer" data-notif-click="' + n.alunoId + '">'
-      + '<div style="font-size:11px;color:var(--brand-h);font-weight:700;margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">Novo médico</div>'
-      + '<div style="font-size:13px;color:var(--t1);font-weight:600">' + n.nome + '</div>'
-      + '<div style="font-size:11px;color:var(--t3);margin-top:3px">' + msg + '</div>'
-      + '</div>';
-  }).join('');
-  return '<div style="background:var(--bg-s);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-top:4px;max-height:320px;overflow-y:auto">' + items + '</div>';
-}
-
 function buildSidebar() {
   const u = state.user;
   const minhas = getMinhasTarefas().filter(t=>!t.done).length;
@@ -972,7 +915,6 @@ function buildSidebar() {
         </div>
       `).join('')}
     </div>
-    <div style="padding:4px 8px 4px;border-top:1px solid var(--border)">${buildSininho()}</div>
     <div class="sb-foot" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px">
       <div style="display:flex;align-items:center;gap:8px">
         <div class="sb-av">${ini(u.name)}</div>
@@ -1217,7 +1159,18 @@ function buildCronograma(t, alunos) {
     return idx === nextIdx;
   }
 
-  // Bloco 0 foi movido para o perfil do aluno
+  // Render bloco0
+  const bloco0Html = bloco0Done && !state.expandedAulas[expandedKey]['bloco0']
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
+        border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;
+        background:rgba(255,255,255,.02);opacity:.65;cursor:pointer" data-expand-aula="bloco0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="color:var(--green);font-size:13px">✓</span>
+          <span style="font-size:13px;color:var(--t3);font-family:var(--fh);font-weight:500">Bloco 0 — Etapas Iniciais</span>
+        </div>
+        <span style="font-size:11px;color:var(--t4)">▼</span>
+      </div>`
+    : buildBloco0(t, alunos);
 
   // Render aulas — full controls for Bruna/god, read-only for others
   const canEditPresenca = isBruna() || isGod();
@@ -1227,7 +1180,7 @@ function buildCronograma(t, alunos) {
     return buildAulaSection(t, alunos, ad);
   }).join('');
 
-  return `<div>${aulasHtml}</div>`;
+  return `<div>${bloco0Html}${aulasHtml}</div>`;
 }
 
 function buildAulaSection(t, alunos, ad) {
@@ -1344,6 +1297,7 @@ function buildAulaSection(t, alunos, ad) {
 
 function buildBloco0(t, alunos) {
   const etapasLabels = [
+    {id:'forms', label:'Formulário de Onboarding enviado'},
     {id:'onb',   label:'Reunião de Onboarding'},
     {id:'fin',   label:'Reunião Fin/Leads'},
     {id:'sec',   label:'Treinamento da Secretária'},
@@ -1366,7 +1320,7 @@ function buildBloco0(t, alunos) {
   return `
   <div class="prog-stage" style="margin-bottom:12px">
     <div class="prog-stage-hdr" style="margin-bottom:12px">
-      <h3>Bloco 0 — Etapas Iniciais</h3>
+      <h3>🎯 Bloco 0 — Etapas Iniciais</h3>
     </div>
     <div class="tbl-wrap" style="overflow-x:auto">
       <table class="tbl">
@@ -1659,21 +1613,28 @@ function buildMedicosPage() {
     lista = lista.filter(a => a.status==='ativo' && isRisco(a));
   } else if (state.filtroMedicos === 'churn') {
     lista = lista.filter(a => a.status==='churn');
+  } else if (state.filtroMedicos === 'novos') {
+    lista = lista.filter(a => a.status==='ativo' && !a.responsavel);
   }
 
-  // Search
+  // Search applies to all tabs
   if (state.searchMedicos) {
     const q = state.searchMedicos.toLowerCase();
     lista = lista.filter(a =>
       a.nome.toLowerCase().includes(q) ||
       (a.especialidade||'').toLowerCase().includes(q) ||
-      (a.turma||'').toLowerCase().includes(q)
+      (a.turma||'').toLowerCase().includes(q) ||
+      (a.cidade||'').toLowerCase().includes(q) ||
+      (a.responsavel||'').toLowerCase().includes(q)
     );
   }
+
+  const novosCount = state.alunos.filter(a => a.status==='ativo' && !a.responsavel).length;
 
   const filtros = [
     {id:'todos', label:'Todos'},
     {id:'meus', label:'Meus'},
+    {id:'novos', label:`Novos${novosCount>0?' ('+novosCount+')':''}`},
     {id:'risco', label:'Em risco'},
     {id:'churn', label:'Churn'},
   ];
@@ -1743,41 +1704,11 @@ function buildMedicoCard(a, clickable=true) {
 // ═══════════════════════════════════════════════════════
 // DETAIL PANEL (ALUNO)
 // ═══════════════════════════════════════════════════════
-function buildDetailEtapas(a) {
-  const et = state.etapas[a.id] || {};
-  const canEdit = isBruna() || isGod();
-  const etapasLabels = [
-    {id:'onb', label:'Reunião de Onboarding', desc:'Com o aluno e um médico responsável'},
-    {id:'fin', label:'Reunião Fin/Leads',     desc:'Com o engenheiro responsável'},
-    {id:'sec', label:'Treinamento da Secretária', desc:'Após a reunião Fin/Leads'},
-  ];
-  const rows = etapasLabels.map(function(e, idx) {
-    const done = et[e.id+'_done'];
-    // Check if previous step is done (for chain)
-    const prevDone = idx === 0 ? true : et[etapasLabels[idx-1].id+'_done'];
-    const disabled = !canEdit || (!done && !prevDone);
-    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">'
-      + '<button class="pres-btn ' + (done?'sim':'') + '" data-etapa="' + e.id + '" data-aluno-id="' + a.id + '" '
-      + (disabled ? 'disabled style="opacity:.4;cursor:default"' : '')
-      + '>' + (done ? '✓' : '—') + '</button>'
-      + '<div style="flex:1">'
-      + '<div style="font-size:13px;font-weight:600;color:' + (done?'var(--green)':'var(--t1)') + '">' + e.label + '</div>'
-      + '<div style="font-size:11px;color:var(--t3);margin-top:2px">' + e.desc + '</div>'
-      + '</div>'
-      + (done ? '<span style="font-size:11px;color:var(--green)">✓ Concluído</span>' : (prevDone ? '<span style="font-size:11px;color:var(--brand-h)">Pendente</span>' : '<span style="font-size:11px;color:var(--t4)">Aguarda etapa anterior</span>'))
-      + '</div>';
-  }).join('');
-  return '<div style="padding:16px 0">'
-    + '<div style="font-size:12px;color:var(--t3);margin-bottom:16px">As etapas seguem uma ordem em cadeia. Marque cada uma ao ser concluída.</div>'
-    + rows
-    + '</div>';
-}
-
 function buildDetailPanel() {
   const a = state.alunos.find(x=>x.id===state.selAluno);
   if (!a) return '';
-  const tabs = ['info','aulas','reunioes','okrs','notas','etapas'];
-  const tabLabels = {info:'Informações',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas',etapas:'Etapas Iniciais'};
+  const tabs = ['info','aulas','reunioes','okrs','notas'];
+  const tabLabels = {info:'Informações',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
   return `
   <div class="detail-panel">
     <div class="detail-hdr">
@@ -1805,7 +1736,6 @@ function buildDetailPanel() {
       ${state.alunoTab==='reunioes' ? buildDetailReunioes(a) : ''}
       ${state.alunoTab==='okrs'  ? buildDetailOKRs(a)  : ''}
       ${state.alunoTab==='notas' ? buildDetailNotas(a) : ''}
-      ${state.alunoTab==='etapas' ? buildDetailEtapas(a) : ''}
     </div>
   </div>`;
 }
@@ -1871,7 +1801,7 @@ function buildDetailInfo(a) {
     <div class="section-title">Dados Gerais</div>
     ${[
       ['Especialidade', a.especialidade],
-      ['Cidade', a.cidade || a.cidades_atendimento],
+      ['Cidade', a.cidade],
       ['WhatsApp', a.whatsapp],
       ['Início da turma', turmaObj?.inicio ? fmt(turmaObj.inicio) : null],
       ['Término previsto', turmaObj?.fim_previsto ? fmt(turmaObj.fim_previsto) : null],
@@ -2345,27 +2275,6 @@ function attachEvents() {
     render();
   });
 
-  // Notificações - toggle painel
-  document.querySelector('[data-toggle-notif]')?.addEventListener('click', () => {
-    state.showNotifPanel = !state.showNotifPanel;
-    render();
-  });
-  // Notificações - clique em item
-  document.querySelectorAll('[data-notif-click]').forEach(el => {
-    el.addEventListener('click', () => {
-      const alunoId = el.dataset.notifClick;
-      const uid = state.user.id;
-      if (!state.notifLidas[uid]) state.notifLidas[uid] = [];
-      if (!state.notifLidas[uid].includes(alunoId)) state.notifLidas[uid].push(alunoId);
-      state.selAluno = alunoId;
-      state.alunoTab = 'info';
-      state.page = 'medicos';
-      state.selTurma = null;
-      state.showNotifPanel = false;
-      render();
-    });
-  });
-
   // Switch profile button → open modal
   // Switch profile
   document.querySelector('[data-switch-profile]')?.addEventListener('click', () => {
@@ -2837,11 +2746,13 @@ function attachEvents() {
       scheduleSave();
       if (!wasDone) {
         // CHECK — create tasks for Bruna
-        if (etapa==='onb') triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst,    'bruna', addDays(now(),7));
-        if (etapa==='fin') triggerTask('Treinamento da Secretária — '+nomeFirst,     'bruna', addDays(now(),7));
+        if (etapa==='forms')                triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
+        if (etapa==='onb' && et.forms_done) triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst,     'bruna', addDays(now(),7));
+        if (etapa==='fin' && et.onb_done)   triggerTask('Treinamento da Secretária — '+nomeFirst,      'bruna', addDays(now(),7));
       } else {
         // UNCHECK — remove corresponding pending tasks
         const toRemove = {
+          forms: ['Marcar Reunião de Onboarding com '+nomeFirst, 'Onboarding: acompanhar forms de '+nomeFirst],
           onb:   ['Marcar Reunião Fin/Leads com '+nomeFirst],
           fin:   ['Treinamento da Secretária — '+nomeFirst],
           sec:   [],
@@ -2938,6 +2849,21 @@ function attachEvents() {
       state.calMonth += delta;
       if (state.calMonth > 11) { state.calMonth = 0; state.calYear++; }
       if (state.calMonth < 0)  { state.calMonth = 11; state.calYear--; }
+      state.calWeek = 0;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-cal-view]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.calView = el.dataset.calView;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-cal-week]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.calWeek = (state.calWeek||0) + parseInt(el.dataset.calWeek);
       render();
     });
   });
@@ -3580,6 +3506,8 @@ function buildCalendarioPage() {
   // Month/year state for navigation
   if (!state.calYear)  state.calYear  = today.getFullYear();
   if (!state.calMonth) state.calMonth = today.getMonth();
+  if (!state.calView)  state.calView  = 'month'; // 'month' or 'week'
+  if (state.calWeek === undefined) state.calWeek = Math.floor((today.getDate()-1)/7); // week index in month
   const year  = state.calYear;
   const month = state.calMonth;
 
@@ -3645,7 +3573,13 @@ function buildCalendarioPage() {
       <!-- Month navigator -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <button class="btn btn-ghost btn-sm" data-cal-nav="-1">${I.back} Anterior</button>
-        <span style="font-family:var(--fh);font-weight:600;font-size:16px;color:var(--t1)">${monthNames[month]} ${year}</span>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-family:var(--fh);font-weight:600;font-size:16px;color:var(--t1)">${monthNames[month]} ${year}</span>
+          <div class="inner-tabs" style="margin:0">
+            <div class="inner-tab ${state.calView==='month'?'active':''}" data-cal-view="month" style="font-size:12px;padding:3px 10px">Mês</div>
+            <div class="inner-tab ${state.calView==='week'?'active':''}" data-cal-view="week" style="font-size:12px;padding:3px 10px">Semana</div>
+          </div>
+        </div>
         <button class="btn btn-ghost btn-sm" data-cal-nav="1">Próximo <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg></button>
       </div>
 
@@ -3655,9 +3589,44 @@ function buildCalendarioPage() {
       </div>
 
       <!-- Calendar grid -->
+      ${state.calView === 'week' ? (() => {
+        // Week view: show only 7 cells starting from the selected week
+        const allCells = [];
+        for (let i = 0; i < pad; i++) allCells.push(null);
+        for (let d = 1; d <= daysInMonth; d++) allCells.push(d);
+        const weekStart = (state.calWeek||0) * 7;
+        const weekCells = allCells.slice(weekStart, weekStart + 7);
+        // week nav
+        const totalWeeks = Math.ceil((pad + daysInMonth) / 7);
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <button class="btn btn-ghost btn-sm" data-cal-week="-1" ${(state.calWeek||0)<=0?'disabled':''}>← Semana anterior</button>
+            <span style="font-size:12px;color:var(--t3)">Semana ${(state.calWeek||0)+1} de ${totalWeeks}</span>
+            <button class="btn btn-ghost btn-sm" data-cal-week="1" ${(state.calWeek||0)>=totalWeeks-1?'disabled':''}>Próxima semana →</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:24px">
+            ${weekCells.map(d => {
+              if (!d) return '<div></div>';
+              const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+              const isToday = dateStr === todayStr;
+              const aulasDay = byDate[d] || [];
+              const isPast = dateStr < todayStr;
+              return `<div style="min-height:110px;padding:8px;border-radius:6px;border:1px solid ${isToday?'var(--brand-h)':aulasDay.length?'rgba(99,102,241,.3)':'var(--border)'};background:${isToday?'var(--brand-dim)':aulasDay.length?'rgba(99,102,241,.04)':'transparent'};opacity:${isPast&&!aulasDay.length?'.4':'1'}">
+                <div style="font-size:13px;font-weight:${isToday?'700':'500'};color:${isToday?'var(--brand-h)':'var(--t2)'};margin-bottom:5px">${d}</div>
+                ${aulasDay.map(a => `
+                  ${a._isReuniao
+                    ? `<div style="font-size:10px;background:rgba(109,40,217,.6);color:#e9d5ff;border-radius:3px;padding:3px 6px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${a.tipo} — ${a.alunoNome}" data-cal-realizar="${a.id}" data-aluno-id="${a.alunoId}">◆ ${a.alunoNome.split(' ')[0]}</div>`
+                    : `<div style="font-size:10px;background:${turmaColor(a.turma).bg};color:${turmaColor(a.turma).text};border-radius:3px;padding:3px 6px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${a.label} — Turma ${a.turmaName}" data-cal-aula="${a.id}" data-cal-turma="${a.turma}">
+                        <span style="opacity:.8">${a.turmaName}</span> ${a.label.split('—')[0].trim()}
+                      </div>`
+                  }`).join('')}
+              </div>`;
+            }).join('')}
+          </div>`;
+      })() : `
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:24px">
         ${cells}
-      </div>
+      </div>`}
 
       <!-- Upcoming -->
       ${upcoming.length > 0 ? `
