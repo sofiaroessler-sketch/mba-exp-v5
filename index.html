@@ -1777,14 +1777,10 @@ function buildMedicosPage() {
       <div class="inner-tabs" style="margin:0">
         ${filtros.map(f=>`<div class="inner-tab ${state.filtroMedicos===f.id?'active':''}" data-filtro="${f.id}">${f.label}</div>`).join('')}
       </div>
-      ${(() => {
-        const specs = [...new Set(state.alunos.map(a=>a.especialidade||'').filter(Boolean))].sort();
-        if (!specs.length) return '';
-        return `<select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto">
-          <option value="todas" ${(state.filtroEspecialidade||'todas')==='todas'?'selected':''}>Todas especialidades</option>
-          ${specs.map(s=>`<option value="${s}" ${state.filtroEspecialidade===s?'selected':''}>${s}</option>`).join('')}
-        </select>`;
-      })()}
+      <select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto">
+        <option value="todas" ${(state.filtroEspecialidade||'todas')==='todas'?'selected':''}>Todas especialidades</option>
+        ${ESPECIALIDADES.map(s=>`<option value="${s}" ${state.filtroEspecialidade===s?'selected':''}>${s}</option>`).join('')}
+      </select>
       <div style="margin-left:auto;position:relative">
         <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
         <input class="inp" id="search-medicos" placeholder="Buscar..." value="${state.searchMedicos}" style="padding-left:32px;width:200px;padding-top:7px;padding-bottom:7px">
