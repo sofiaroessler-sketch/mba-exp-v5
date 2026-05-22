@@ -849,7 +849,7 @@ function isRisco(a) {
   // Só flagear planilha se a turma tiver alguma atividade registrada (evitar falso positivo em turmas novas)
   const pTidChurn = state.presenca[a.turma] || {};
   const temPresenca = Object.keys(pTidChurn).some(aid => (pTidChurn[aid]||{})[a.id]);
-  const semPlanilha = temPresenca && ((a.planilha_fin_ok===false) || (a.planilha_leads_ok===false));
+  const semPlanilha = temPresenca && (!a.link_fin || !a.link_leads);
   return faltas>=maxFaltas || maxC>=maxConsec || maxLink>=maxConsecLink || semPlanilha;
 }
 
@@ -868,8 +868,8 @@ function riscoMotivos(a) {
   let linkC=0,maxLink=0;
   aulaVals.forEach(v=>{if(v==='link'||v==='sim2'){linkC++;maxLink=Math.max(maxLink,linkC);}else linkC=0;});
   if (maxLink>=maxConsecLink) motivos.push(`${maxLink} últimas aulas via link/vídeo (limite: ${maxConsecLink})`);
-  if (a.planilha_fin_ok===false)   motivos.push('Planilha financeira não enviada');
-  if (a.planilha_leads_ok===false) motivos.push('Planilha de leads não enviada');
+  if (!a.link_fin)   motivos.push('Planilha financeira não enviada');
+  if (!a.link_leads) motivos.push('Planilha de leads não enviada');
   return motivos;
 }
 
