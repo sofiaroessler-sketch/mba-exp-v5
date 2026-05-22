@@ -1845,6 +1845,7 @@ function buildDetailPanel() {
   if (!a) return '';
   const tabs = ['info','etapas','historico','aulas','reunioes','okrs','notas'];
   const tabLabels = {info:'Informações',etapas:'Etapas Iniciais',historico:'Histórico',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
+  const motivos = isRisco(a) ? riscoMotivos(a) : [];
   return `
   <div class="detail-panel">
     <div class="detail-hdr">
@@ -1858,22 +1859,8 @@ function buildDetailPanel() {
           </div>
         </div>
       </div>
-      ${(() => {
-        if (a.status === 'churn') return `
-          <div style="margin:0 16px 12px;padding:10px 14px;background:rgba(229,62,62,.1);border:1px solid rgba(229,62,62,.3);border-radius:var(--r2);font-size:12.5px;color:var(--red-t)">
-            ⚠ Médico em churn
-          </div>`;
-        const motivos = isRisco(a) ? riscoMotivos(a) : [];
-        if (!motivos.length) return '';
-        return `
-          <div style="margin:0 16px 12px;padding:10px 14px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2)">
-            <div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">⚠ Em risco de churn</div>
-            ${motivos.map(m=>`<div style="font-size:12.5px;color:var(--amber-t);margin-top:3px">· ${m}</div>`).join('')}
-          </div>`;
-      })()}
-      </div>
       <div style="display:flex;gap:6px">
-        ${isBruna() ? `<button class="btn btn-ghost btn-sm" data-ir-historico="${a.id}" title="Ver histórico completo">${I.histIcon} Histórico</button>` : ''}
+        ${isBruna() ? `<button class="btn btn-ghost btn-sm" data-ir-historico="${a.id}">${I.histIcon} Histórico</button>` : ''}
         <button class="btn-icon" data-action="editar-aluno" title="Editar">${I.edit}</button>
         <button class="btn-icon" data-close-panel title="Fechar">${I.x}</button>
       </div>
@@ -1882,6 +1869,7 @@ function buildDetailPanel() {
       ${tabs.map(t=>`<div class="detail-tab ${state.alunoTab===t?'active':''}" data-aluno-tab="${t}">${tabLabels[t]}</div>`).join('')}
     </div>
     <div class="detail-body">
+      ${a.status==='churn' ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(229,62,62,.1);border:1px solid rgba(229,62,62,.3);border-radius:var(--r2);font-size:12.5px;color:var(--red-t)">⚠ Médico em churn</div>` : motivos.length ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2)"><div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">⚠ Em risco de churn</div>${motivos.map(m=>`<div style="font-size:12.5px;color:var(--amber-t);margin-top:3px">· ${m}</div>`).join('')}</div>` : ''}
       ${state.alunoTab==='info' ? buildDetailInfo(a) : ''}
       ${state.alunoTab==='etapas' ? buildDetailEtapas(a) : ''}
       ${state.alunoTab==='historico' ? buildDetailHistorico(a) : ''}
