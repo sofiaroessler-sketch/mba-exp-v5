@@ -1858,6 +1858,20 @@ function buildDetailPanel() {
           </div>
         </div>
       </div>
+      ${(() => {
+        if (a.status === 'churn') return `
+          <div style="margin:0 16px 12px;padding:10px 14px;background:rgba(229,62,62,.1);border:1px solid rgba(229,62,62,.3);border-radius:var(--r2);font-size:12.5px;color:var(--red-t)">
+            ⚠ Médico em churn
+          </div>`;
+        const motivos = isRisco(a) ? riscoMotivos(a) : [];
+        if (!motivos.length) return '';
+        return `
+          <div style="margin:0 16px 12px;padding:10px 14px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2)">
+            <div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">⚠ Em risco de churn</div>
+            ${motivos.map(m=>`<div style="font-size:12.5px;color:var(--amber-t);margin-top:3px">· ${m}</div>`).join('')}
+          </div>`;
+      })()}
+      </div>
       <div style="display:flex;gap:6px">
         ${isBruna() ? `<button class="btn btn-ghost btn-sm" data-ir-historico="${a.id}" title="Ver histórico completo">${I.histIcon} Histórico</button>` : ''}
         <button class="btn-icon" data-action="editar-aluno" title="Editar">${I.edit}</button>
