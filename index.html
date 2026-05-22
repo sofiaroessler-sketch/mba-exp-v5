@@ -378,7 +378,8 @@ async function saveStateToDb(retryCount = 0) {
     aulaAberta:   state.aulaAberta,
     faltaLog:     state.faltaLog,
     riscoCriteria:state.riscoCriteria,
-    accessLog:    state.accessLog,
+    accessLog:    state.accessLog.slice(-500), // mantém só as 500 mais recentes
+    accessStats:  state.accessStats || {},
     profiles:     state.profiles,
     reunioes:     state.reunioes,
   };
@@ -414,12 +415,24 @@ async function saveStateToDb(retryCount = 0) {
         aulaAberta:  snapshot.aulaAberta,
         faltaLog:    snapshot.faltaLog,
         riscoCriteria: snapshot.riscoCriteria,
-        accessLog:   [
-          ...(remoteData.accessLog || []),
-          ...(snapshot.accessLog || []).filter(e =>
-            !(remoteData.accessLog || []).some(r => r.ts === e.ts && r.userId === e.userId)
-          )
-        ],
+        accessLog:   remoteData.accessLog || [],
+        accessStats: (() => {
+          // Merge stats: soma os contadores de ambos
+          const local  = snapshot.accessStats  || { byUser:{}, byPage:{}, lastAccess:{} };
+          const remote = remoteData.accessStats || { byUser:{}, byPage:{}, lastAccess:{} };
+          const merged = { byUser: {...remote.byUser}, byPage: {...remote.byPage}, lastAccess: {...remote.lastAccess, ...local.lastAccess} };
+          Object.entries(local.byUser || {}).forEach(([uid, data]) => {
+            if (!merged.byUser[uid]) { merged.byUser[uid] = data; return; }
+            merged.byUser[uid].total = (merged.byUser[uid].total || 0) + (data.total || 0);
+            Object.entries(data.pages || {}).forEach(([pg, cnt]) => {
+              merged.byUser[uid].pages[pg] = (merged.byUser[uid].pages[pg] || 0) + cnt;
+            });
+          });
+          Object.entries(local.byPage || {}).forEach(([pg, cnt]) => {
+            merged.byPage[pg] = (merged.byPage[pg] || 0) + cnt;
+          });
+          return merged;
+        })(),
       };
 
       state._loadedAt = remoteTs;
@@ -456,6 +469,7 @@ async function loadStateFromDb() {
       if (d.faltaLog)     state.faltaLog     = d.faltaLog;
       if (d.riscoCriteria) state.riscoCriteria = d.riscoCriteria;
       if (d.accessLog)      state.accessLog    = d.accessLog;
+      if (d.accessStats)    state.accessStats   = d.accessStats;
       if (d.profiles) {
         state.profiles = d.profiles;
         // Sync PROFILES global so login screen shows all users
@@ -718,6 +732,7 @@ let state = {
   tarefaFilter: 'pendentes',
   adminTab: 'visao-geral',
   accessLog: [],
+  accessStats: { byUser: {}, byPage: {}, lastAccess: {} },
   profiles: [
     {id:'otavio',  name:'Otávio',  email:'otavio@exponencialmed.com.br'},
     {id:'emura',   name:'Emura',   email:'emura@exponencialmed.com.br'},
@@ -2332,9 +2347,22 @@ function addDays(dateStr, n) {
 
 function logAccess(page) {
   if (!state.user) return;
-  state.accessLog.push({userId:state.user.id, userName:state.user.name, page, ts:new Date().toISOString()});
-  if (state.accessLog.length > 500) state.accessLog = state.accessLog.slice(-500);
+  const userId   = state.user.id;
+  const userName = state.user.name;
+  const ts       = new Date().toISOString();
 
+  if (!state.accessStats) state.accessStats = { byUser: {}, byPage: {}, lastAccess: {} };
+
+  if (!state.accessStats.byUser[userId]) state.accessStats.byUser[userId] = { name: userName, total: 0, pages: {} };
+  state.accessStats.byUser[userId].total++;
+  state.accessStats.byUser[userId].pages[page] = (state.accessStats.byUser[userId].pages[page] || 0) + 1;
+  state.accessStats.byUser[userId].name = userName;
+
+  if (page !== 'login') {
+    state.accessStats.byPage[page] = (state.accessStats.byPage[page] || 0) + 1;
+  }
+
+  state.accessStats.lastAccess[userId] = ts;
 }
 
 function attachEvents() {
@@ -3863,8 +3891,11 @@ function buildAdminGeral() {
   const turmasCount  = state.turmas.length;
   const tarefasPend  = state.tarefas.filter(t=>!t.done).length;
 
-  // Last 10 access log entries
-  const recent = state.accessLog.slice(-10).reverse();
+  // Last access per user from stats
+  const recentUsers = Object.entries(state.accessStats?.lastAccess || {})
+    .map(([uid, ts]) => ({ uid, ts, name: (state.accessStats?.byUser?.[uid]?.name || uid) }))
+    .sort((a, b) => b.ts.localeCompare(a.ts))
+    .slice(0, 5);
 
   return `
   <div>
@@ -3881,17 +3912,15 @@ function buildAdminGeral() {
     </div>
 
     <div class="divider"></div>
-    <div class="section-title">Atividade Recente</div>
-    ${recent.length===0 ? '<div style="color:var(--t4);font-size:13px">Nenhuma atividade registrada ainda.</div>' : ''}
-    ${recent.map(e=>{
-      const dt = new Date(e.ts);
+    <div class="section-title">Último Acesso por Pessoa</div>
+    ${recentUsers.length===0 ? '<div style="color:var(--t4);font-size:13px">Nenhuma atividade registrada ainda.</div>' : ''}
+    ${recentUsers.map(u => {
+      const dt = new Date(u.ts);
       const time = dt.toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;color:var(--brand-h);flex-shrink:0">${e.userName.charAt(0)}</div>
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;color:var(--brand-h);flex-shrink:0">${u.name.charAt(0)}</div>
         <div style="flex:1">
-          <span style="font-weight:500;color:var(--t1)">${e.userName}</span>
-          <span style="color:var(--t4)"> acessou </span>
-          <span style="color:var(--brand-h)">${e.page}</span>
+          <span style="font-weight:500;color:var(--t1)">${u.name}</span>
         </div>
         <span style="font-size:11.5px;color:var(--t4)">${time}</span>
       </div>`;
@@ -3929,8 +3958,8 @@ function buildAdminPerfis() {
         </tr></thead>
         <tbody>
           ${state.profiles.map(p => {
-            const last = state.accessLog.filter(l=>l.userId===p.id).pop();
-            const lastDt = last ? new Date(last.ts).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+            const lastTs = (state.accessStats?.lastAccess || {})[p.id];
+            const lastDt = lastTs ? new Date(lastTs).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
             const hasEmail = p.email && p.email.includes('@');
             const hasCred  = hasEmail && p.sbId;
             return `<tr>
@@ -4063,81 +4092,75 @@ function buildAdminMedicos() {
 
 // ── Relatório de Acesso ──
 function buildAdminRelatorio() {
-  const log = state.accessLog.filter(e=>e.page!=='login').slice().reverse();
+  const stats    = state.accessStats || { byUser: {}, byPage: {}, lastAccess: {} };
+  const userStats = Object.entries(stats.byUser || {})
+    .map(([id, d]) => ({ id, ...d }))
+    .filter(u => u.total > 0)
+    .sort((a, b) => b.total - a.total);
+  const totalAcessos = userStats.reduce((s, u) => s + u.total, 0) || 1;
 
-  // Count per user
-  const byUser = {};
-  state.profiles.forEach(p => { byUser[p.id] = {name:p.name, total:0, pages:{}}; });
-  log.forEach(e => {
-    if (!byUser[e.userId]) byUser[e.userId] = {name:e.userName, total:0, pages:{}};
-    byUser[e.userId].total++;
-    byUser[e.userId].pages[e.page] = (byUser[e.userId].pages[e.page]||0)+1;
-  });
-  const userStats = Object.values(byUser).filter(u=>u.total>0).sort((a,b)=>b.total-a.total);
-  const totalLog = log.length || 1;
+  const pageStats = Object.entries(stats.byPage || {}).sort((a, b) => b[1] - a[1]);
+  const totalPages = pageStats.reduce((s, [, v]) => s + v, 0) || 1;
 
-  // Count per page
-  const byPage = {};
-  log.forEach(e => { byPage[e.page] = (byPage[e.page]||0)+1; });
-  const pageStats = Object.entries(byPage).sort((a,b)=>b[1]-a[1]);
+  const pageLabels = {
+    turmas: 'Turmas', tarefas: 'Tarefas', medicos: 'Médicos',
+    calendario: 'Calendário', admin: 'Admin', monitoramento: 'Monitoramento',
+    'minhas-reunioes': 'Minhas Reuniões', kanban: 'Kanban', login: 'Login'
+  };
 
   return `
   <div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div class="section-title" style="margin:0">Relatório de Acesso</div>
-      <span class="pill pill-gray" style="font-size:11px">${log.length} eventos</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div class="section-title" style="margin:0">Relatório de Uso</div>
+      <span class="pill pill-gray" style="font-size:11px">${totalAcessos} acessos registrados</span>
     </div>
-    ${log.length===0 ? `<div class="empty-state" style="padding:24px 0"><p>Nenhum acesso registrado ainda</p></div>` : `
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-      <div class="card" style="flex:1;min-width:200px;padding:14px 16px">
-        <div class="section-title" style="margin-bottom:10px">Por usuário</div>
-        ${userStats.map(u=>{
-          const pct = Math.round(u.total/totalLog*100);
-          const barColor = pct>=50?'var(--brand)':pct>=25?'var(--amber)':'var(--t4)';
-          return `
-          <div style="padding:8px 0;border-bottom:1px solid var(--border)">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-              <span style="font-size:13px;color:var(--t2)">${u.name}</span>
-              <span style="font-size:12px;font-weight:600;color:var(--t1)">${pct}%</span>
+
+    ${userStats.length === 0 ? `<div class="empty-state" style="padding:24px 0"><p>Nenhum acesso registrado ainda</p></div>` : `
+
+    <!-- Por usuário -->
+    <div class="section-title" style="margin-bottom:12px">Uso por pessoa</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
+      ${userStats.map(u => {
+        const pct = Math.round(u.total / totalAcessos * 100);
+        const topPage = Object.entries(u.pages||{}).sort((a,b)=>b[1]-a[1])[0];
+        return `
+        <div style="padding:12px 16px;border-radius:var(--r2);border:1px solid var(--border);background:var(--bg-s)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--brand-h)">${u.name.charAt(0)}</div>
+              <span style="font-weight:600;color:var(--t1)">${u.name}</span>
             </div>
-            <div style="height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden">
-              <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:width .3s"></div>
+            <div style="display:flex;align-items:center;gap:12px">
+              ${topPage ? `<span style="font-size:11px;color:var(--t4)">Mais usa: <b style="color:var(--t2)">${pageLabels[topPage[0]]||topPage[0]}</b></span>` : ''}
+              <span style="font-size:13px;font-weight:700;color:var(--brand-h)">${pct}%</span>
+              <span style="font-size:12px;color:var(--t4)">${u.total} acessos</span>
             </div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="card" style="flex:1;min-width:200px;padding:14px 16px">
-        <div class="section-title" style="margin-bottom:10px">Por página</div>
-        ${pageStats.map(([p,n])=>{
-          const pct = Math.round(n/totalLog*100);
-          return `
-          <div style="padding:8px 0;border-bottom:1px solid var(--border)">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-              <span style="font-size:13px;color:var(--t2)">${p}</span>
-              <span style="font-size:12px;font-weight:600;color:var(--t1)">${pct}%</span>
-            </div>
-            <div style="height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden">
-              <div style="height:100%;width:${pct}%;background:var(--brand-h);border-radius:2px"></div>
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
+          </div>
+          <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--brand-h);border-radius:3px;transition:width .3s"></div>
+          </div>
+        </div>`;
+      }).join('')}
     </div>
-    <div class="section-title" style="margin-bottom:10px">Últimos acessos</div>
-    <div class="tbl-wrap"><table class="tbl">
-      <thead><tr><th>Usuário</th><th>Página</th><th>Data/hora</th></tr></thead>
-      <tbody>
-        ${log.slice(0,50).map(e=>`<tr>
-          <td style="font-weight:500;color:var(--t1)">${e.userName||e.userId}</td>
-          <td style="color:var(--t4)">${e.page}</td>
-          <td style="color:var(--t4);font-size:12px">${new Date(e.ts).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>
+
+    <!-- Por aba -->
+    <div class="section-title" style="margin-bottom:12px">Uso por funcionalidade</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${pageStats.map(([page, cnt]) => {
+        const pct = Math.round(cnt / totalPages * 100);
+        return `
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:13px;color:var(--t2);width:140px;flex-shrink:0">${pageLabels[page]||page}</span>
+          <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--brand-h);border-radius:3px"></div>
+          </div>
+          <span style="font-size:12px;color:var(--t4);width:60px;text-align:right">${cnt} (${pct}%)</span>
+        </div>`;
+      }).join('')}
+    </div>
     `}
   </div>`;
 }
-
 
 
 function buildModalEditProfile(p) {
