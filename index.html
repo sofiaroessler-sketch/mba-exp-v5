@@ -758,6 +758,7 @@ let state = {
   alunoTab: 'info',
   filtroMedicos: 'todos',
   filtroEspecialidade: 'todas',
+  filtroTurma: 'todas',
   searchMedicos: '',
   searchHistorico: '',
   selHistoricoAluno: null,
@@ -1739,6 +1740,11 @@ function buildMedicosPage() {
     lista = lista.filter(a => (a.especialidade||'').trim().toLowerCase() === state.filtroEspecialidade.trim().toLowerCase());
   }
 
+  // Turma filter
+  if (state.filtroTurma && state.filtroTurma !== 'todas') {
+    lista = lista.filter(a => a.turma === state.filtroTurma);
+  }
+
   // Search applies to all tabs
   if (state.searchMedicos) {
     const q = state.searchMedicos.toLowerCase();
@@ -1777,9 +1783,13 @@ function buildMedicosPage() {
       <div class="inner-tabs" style="margin:0">
         ${filtros.map(f=>`<div class="inner-tab ${state.filtroMedicos===f.id?'active':''}" data-filtro="${f.id}">${f.label}</div>`).join('')}
       </div>
-      <select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="console.log('filtro esp:', this.value); state.filtroEspecialidade=this.value;render()">
+      <select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="state.filtroEspecialidade=this.value;render()">
         <option value="todas" ${(state.filtroEspecialidade||'todas')==='todas'?'selected':''}>Todas especialidades</option>
         ${ESPECIALIDADES.map(s=>`<option value="${s}" ${state.filtroEspecialidade===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="state.filtroTurma=this.value;render()">
+        <option value="todas" ${(state.filtroTurma||'todas')==='todas'?'selected':''}>Todas as turmas</option>
+        ${state.turmas.map(t=>`<option value="${t.id}" ${state.filtroTurma===t.id?'selected':''}>${t.nome}</option>`).join('')}
       </select>
       <div style="margin-left:auto;position:relative">
         <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
