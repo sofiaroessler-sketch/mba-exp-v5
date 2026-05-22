@@ -4122,7 +4122,6 @@ function buildAdminRelatorio() {
   <div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <div class="section-title" style="margin:0">Relatório de Uso</div>
-      <span class="pill pill-gray" style="font-size:11px">${totalAcessos} acessos registrados</span>
     </div>
 
     ${userStats.length === 0 ? `<div class="empty-state" style="padding:24px 0"><p>Nenhum acesso registrado ainda</p></div>` : `
@@ -4143,7 +4142,6 @@ function buildAdminRelatorio() {
             <div style="display:flex;align-items:center;gap:12px">
               ${topPage ? `<span style="font-size:11px;color:var(--t4)">Mais usa: <b style="color:var(--t2)">${pageLabels[topPage[0]]||topPage[0]}</b></span>` : ''}
               <span style="font-size:13px;font-weight:700;color:var(--brand-h)">${pct}%</span>
-              <span style="font-size:12px;color:var(--t4)">${u.total} acessos</span>
             </div>
           </div>
           <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
