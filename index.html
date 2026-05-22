@@ -2911,6 +2911,25 @@ function attachEvents() {
     });
   });
 
+  document.querySelectorAll('[data-cal-turma-filter]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.calTurmaFilter = el.dataset.calTurmaFilter;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-cal-day]').forEach(el => {
+    el.addEventListener('click', () => {
+      const delta = parseInt(el.dataset.calDay);
+      const d = new Date((state.calDay || new Date().toISOString().slice(0,10)) + 'T12:00');
+      d.setDate(d.getDate() + delta);
+      state.calDay = d.toISOString().slice(0,10);
+      state.calYear  = d.getFullYear();
+      state.calMonth = d.getMonth();
+      render();
+    });
+  });
+
   // Link toggle — independent of presença (Bruna marks absent + sends link)
   document.querySelectorAll('[data-link-toggle]').forEach(el => {
     el.addEventListener('click', e => {
@@ -3506,6 +3525,223 @@ function buildCalendario(t, alunos) {
 function buildCalendarioPage() {
   const today = new Date();
   const todayStr = today.toISOString().slice(0,10);
+  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const monthShort = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const dayNames = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+
+  // Init state
+  if (!state.calYear)  state.calYear  = today.getFullYear();
+  if (!state.calMonth) state.calMonth = today.getMonth();
+  if (!state.calView)  state.calView  = 'month';
+  if (state.calWeek === undefined) state.calWeek = 0;
+  if (!state.calTurmaFilter) state.calTurmaFilter = 'todas';
+
+  const year  = state.calYear;
+  const month = state.calMonth;
+  const view  = state.calView;
+
+  // Collect all aulas across all turmas
+  let allAulas = [];
+  state.turmas.forEach(t => {
+    const datesMap = state.aulasDates[t.id] || {};
+    Object.entries(datesMap).forEach(([aulaId, info]) => {
+      if (!info.data) return;
+      const def = AULAS_DEF.find(a => a.id === aulaId);
+      if (!def) return;
+      allAulas.push({...def, ...info, turma: t.id, turmaName: t.nome});
+    });
+  });
+
+  // Apply turma filter
+  const filteredAulas = state.calTurmaFilter === 'todas'
+    ? allAulas
+    : allAulas.filter(a => a.turma === state.calTurmaFilter);
+
+  // Build day→events map
+  function buildByDate(aulasList) {
+    const map = {};
+    aulasList.forEach(a => {
+      const d = new Date(a.data + 'T12:00');
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        const key = d.getDate();
+        if (!map[key]) map[key] = [];
+        map[key].push(a);
+      }
+    });
+    return map;
+  }
+
+  function eventChip(a, size='sm') {
+    const fs = size==='lg' ? '11px' : '9.5px';
+    const pad = size==='lg' ? '4px 8px' : '2px 5px';
+    return `<div style="font-size:${fs};background:${turmaColor(a.turma).bg};color:${turmaColor(a.turma).text};border-radius:3px;padding:${pad};margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.label} — ${a.turmaName}">
+      <b>${a.turmaName}</b> ${a.label.split('—')[0].trim()}
+    </div>`;
+  }
+
+  // ── MONTH VIEW ──────────────────────────────────────────
+  function renderMonth() {
+    const byDate = buildByDate(filteredAulas);
+    const daysInMonth = new Date(year, month+1, 0).getDate();
+    let firstDay = new Date(year, month, 1).getDay();
+    const pad = firstDay === 0 ? 6 : firstDay - 1;
+
+    let cells = '';
+    for (let i = 0; i < pad; i++) cells += '<div style="min-height:80px"></div>';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const isToday = dateStr === todayStr;
+      const events  = byDate[d] || [];
+      const isPast  = dateStr < todayStr;
+      cells += `<div style="min-height:80px;padding:5px 6px;border-radius:6px;border:1px solid ${isToday?'var(--brand-h)':events.length?'rgba(99,102,241,.3)':'var(--border)'};background:${isToday?'var(--brand-dim)':events.length?'rgba(99,102,241,.04)':'transparent'};opacity:${isPast&&!events.length?'.4':'1'}">
+        <div style="font-size:11px;font-weight:${isToday?'700':'400'};color:${isToday?'var(--brand-h)':'var(--t4)'};margin-bottom:3px;text-align:right">${d}</div>
+        ${events.map(a => eventChip(a)).join('')}
+      </div>`;
+    }
+
+    return `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells}</div>`;
+  }
+
+  // ── WEEK VIEW ───────────────────────────────────────────
+  function renderWeek() {
+    const byDate = buildByDate(filteredAulas);
+    const daysInMonth = new Date(year, month+1, 0).getDate();
+    let firstDay = new Date(year, month, 1).getDay();
+    const pad = firstDay === 0 ? 6 : firstDay - 1;
+
+    const allCells = [];
+    for (let i = 0; i < pad; i++) allCells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) allCells.push(d);
+    const totalWeeks = Math.ceil(allCells.length / 7);
+    const wk = Math.min(state.calWeek||0, totalWeeks-1);
+    const weekCells = allCells.slice(wk*7, wk*7+7);
+
+    const cells = weekCells.map(d => {
+      if (!d) return '<div style="min-height:120px;border-radius:6px;border:1px solid var(--border);opacity:.3"></div>';
+      const dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const isToday = dateStr === todayStr;
+      const events  = byDate[d] || [];
+      const isPast  = dateStr < todayStr;
+      return `<div style="min-height:120px;padding:8px;border-radius:6px;border:1px solid ${isToday?'var(--brand-h)':events.length?'rgba(99,102,241,.3)':'var(--border)'};background:${isToday?'var(--brand-dim)':events.length?'rgba(99,102,241,.04)':'transparent'};opacity:${isPast&&!events.length?'.4':'1'}">
+        <div style="font-size:13px;font-weight:${isToday?'700':'500'};color:${isToday?'var(--brand-h)':'var(--t2)'};margin-bottom:6px">${d}</div>
+        ${events.map(a => eventChip(a,'lg')).join('')}
+        ${!events.length?'<div style="font-size:10px;color:var(--t4);margin-top:4px">—</div>':''}
+      </div>`;
+    }).join('');
+
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <button class="btn btn-ghost btn-sm" data-cal-week="-1" ${wk<=0?'disabled':''}>← Anterior</button>
+        <span style="font-size:12px;color:var(--t3)">Semana ${wk+1} de ${totalWeeks}</span>
+        <button class="btn btn-ghost btn-sm" data-cal-week="1" ${wk>=totalWeeks-1?'disabled':''}>Próxima →</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells}</div>`;
+  }
+
+  // ── DAY VIEW ────────────────────────────────────────────
+  function renderDay() {
+    if (!state.calDay) state.calDay = todayStr;
+    const d = new Date(state.calDay + 'T12:00');
+    const events = filteredAulas.filter(a => a.data === state.calDay);
+    const dayNames2 = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <button class="btn btn-ghost btn-sm" data-cal-day="-1">← Anterior</button>
+        <div style="text-align:center">
+          <div style="font-family:var(--fh);font-weight:700;font-size:22px;color:var(--t1)">${d.getDate()}</div>
+          <div style="font-size:12px;color:var(--t4)">${dayNames2[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getFullYear()}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-cal-day="1">Próximo →</button>
+      </div>
+      ${events.length ? events.map(a => `
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r2);border:1px solid ${turmaColor(a.turma).bg}44;background:${turmaColor(a.turma).bg}18;margin-bottom:10px">
+          <div style="width:44px;height:44px;border-radius:var(--r);background:${turmaColor(a.turma).bg};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span style="font-size:13px;font-weight:700;color:${turmaColor(a.turma).text}">${a.turmaName}</span>
+          </div>
+          <div>
+            <div style="font-family:var(--fh);font-weight:600;font-size:14px;color:var(--t1)">${a.label}</div>
+            <div style="font-size:12px;color:var(--t4);margin-top:2px">${a.turmaName}</div>
+          </div>
+        </div>`).join('')
+      : `<div class="empty-state">${I.calendar}<p>Nenhuma aula neste dia</p></div>`}`;
+  }
+
+  // ── TURMA FILTER OPTIONS ────────────────────────────────
+  const turmaOptions = state.turmas.filter(t => {
+    const hasDates = Object.values(state.aulasDates[t.id]||{}).some(v=>v.data);
+    return hasDates;
+  });
+
+  const upcomingAll = filteredAulas.filter(a => a.data >= todayStr).sort((a,b)=>a.data.localeCompare(b.data));
+
+  return `
+  <div class="page">
+    <div class="page-hdr">
+      <div>
+        <div class="page-title">Calendário de Aulas</div>
+        <div class="page-sub">${filteredAulas.length} aula${filteredAulas.length!==1?'s':''} agendada${filteredAulas.length!==1?'s':''}</div>
+      </div>
+    </div>
+    <div class="page-body">
+
+      <!-- Controls -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+
+        <!-- Nav + Month title -->
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-ghost btn-sm" data-cal-nav="-1">${I.back}</button>
+          <span style="font-family:var(--fh);font-weight:600;font-size:15px;color:var(--t1);min-width:140px;text-align:center">${monthNames[month]} ${year}</span>
+          <button class="btn btn-ghost btn-sm" data-cal-nav="1">›</button>
+        </div>
+
+        <!-- View toggle -->
+        <div class="inner-tabs" style="margin:0">
+          <div class="inner-tab ${view==='day'?'active':''}" data-cal-view="day" style="font-size:12px;padding:4px 12px">Dia</div>
+          <div class="inner-tab ${view==='week'?'active':''}" data-cal-view="week" style="font-size:12px;padding:4px 12px">Semana</div>
+          <div class="inner-tab ${view==='month'?'active':''}" data-cal-view="month" style="font-size:12px;padding:4px 12px">Mês</div>
+        </div>
+
+        <!-- Turma filter -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <div class="inner-tab ${state.calTurmaFilter==='todas'?'active':''}" data-cal-turma-filter="todas" style="font-size:11px;padding:3px 10px;cursor:pointer">Todas</div>
+          ${turmaOptions.map(t=>`<div class="inner-tab ${state.calTurmaFilter===t.id?'active':''}" data-cal-turma-filter="${t.id}" style="font-size:11px;padding:3px 10px;cursor:pointer">${t.nome}</div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Day headers (not for day view) -->
+      ${view !== 'day' ? `
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
+        ${dayNames.map(d=>`<div style="font-size:10px;font-weight:600;color:var(--t4);text-align:center;padding:4px 0">${d}</div>`).join('')}
+      </div>` : ''}
+
+      <!-- Grid -->
+      ${view==='month' ? renderMonth() : view==='week' ? renderWeek() : renderDay()}
+
+      <!-- Upcoming list -->
+      ${upcomingAll.length > 0 ? `
+      <div class="divider" style="margin-top:24px"></div>
+      <div class="section-title" style="margin-bottom:12px">Próximas Aulas</div>
+      ${upcomingAll.slice(0,8).map(a => {
+        const d = new Date(a.data + 'T12:00');
+        return `<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid ${turmaColor(a.turma).bg}44;border-radius:var(--r2);margin-bottom:8px;background:${turmaColor(a.turma).bg}11">
+          <div style="width:44px;height:44px;border-radius:var(--r);background:${turmaColor(a.turma).bg};display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+            <span style="font-size:16px;font-weight:700;font-family:var(--fh);color:${turmaColor(a.turma).text};line-height:1">${d.getDate()}</span>
+            <span style="font-size:9px;color:${turmaColor(a.turma).text};opacity:.8;text-transform:uppercase">${monthShort[d.getMonth()]}</span>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:var(--fh);font-weight:600;font-size:13.5px;color:var(--t1)">${a.label}</div>
+            <div style="font-size:12px;color:var(--brand-h);margin-top:2px">${a.turmaName}</div>
+          </div>
+          <span style="font-size:12px;color:var(--t4);flex-shrink:0">${a.data}</span>
+        </div>`;
+      }).join('')}
+      ${upcomingAll.length > 8 ? `<div style="text-align:center;font-size:12.5px;color:var(--t4);padding:8px">+ ${upcomingAll.length-8} mais</div>` : ''}
+      ` : `<div class="divider" style="margin-top:24px"></div><div class="empty-state" style="padding:24px 0">${I.calendar}<p>Nenhuma aula agendada</p></div>`}
+
+    </div>
+  </div>`;
+}
 
   // Collect all scheduled aulas across all turmas
   const allAulas = [];
@@ -3518,259 +3754,6 @@ function buildCalendarioPage() {
       allAulas.push({...def, ...info, turma: t.id, turmaName: t.nome});
     });
   });
-  allAulas.sort((a,b) => a.data.localeCompare(b.data));
-
-  const myName  = state.user?.name || '';
-  const isAdmin = isGod();
-
-  // Everyone sees all scheduled aulas in calendar
-  const myAulas = allAulas;
-
-  // Collect reunioes: admin sees all, others only see their alunos'
-  const myUserId = state.user?.id || '';
-  const allReunioes = [];
-  state.alunos.forEach(a => {
-    (a.reunioes||[]).forEach(r => {
-      if (!r.data) return;
-      // Include if: god mode, OR aluno's responsavel is me, OR reunião's responsavelId is me
-      const isMineByAluno = a.responsavel === myName;
-      const isMineByReuniao = r.responsavelId === myUserId;
-      if (isAdmin || isMineByAluno || isMineByReuniao) {
-        allReunioes.push({...r, alunoId:a.id, alunoNome:a.nome, alunoWpp:a.whatsapp||'', turma:a.turma});
-      }
-    });
-  });
-  allReunioes.sort((a,b) => a.data.localeCompare(b.data));
-  const upcomingReu = allReunioes.filter(r => !r.realizada && r.data >= todayStr);
-
-  const upcoming = myAulas.filter(a => a.data >= todayStr);
-  const past     = myAulas.filter(a => a.data <  todayStr).reverse();
-
-  // Month/year state for navigation
-  if (!state.calYear)  state.calYear  = today.getFullYear();
-  if (!state.calMonth) state.calMonth = today.getMonth();
-  if (!state.calView)  state.calView  = 'month'; // 'month' or 'week'
-  if (state.calWeek === undefined) state.calWeek = Math.floor((today.getDate()-1)/7); // week index in month
-  const year  = state.calYear;
-  const month = state.calMonth;
-
-  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  const daysInMonth = new Date(year, month+1, 0).getDate();
-  let firstDay = new Date(year, month, 1).getDay(); // 0=Sun
-  const pad = firstDay === 0 ? 6 : firstDay - 1;    // Monday-start
-
-  // Build date→aulas+reunioes map for this month
-  const byDate = {};
-  myAulas.forEach(a => {
-    const d = new Date(a.data + 'T12:00');
-    if (d.getFullYear() === year && d.getMonth() === month) {
-      const key = d.getDate();
-      if (!byDate[key]) byDate[key] = [];
-      byDate[key].push(a);
-    }
-  });
-  allReunioes.forEach(r => {
-    const d = new Date(r.data + 'T12:00');
-    if (d.getFullYear() === year && d.getMonth() === month) {
-      const key = d.getDate();
-      if (!byDate[key]) byDate[key] = [];
-      byDate[key].push({...r, _isReuniao:true});
-    }
-  });
-
-  // Calendar grid
-  let cells = '';
-  for (let i = 0; i < pad; i++) cells += '<div></div>';
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-    const isToday = dateStr === todayStr;
-    const aulasDay = byDate[d] || [];
-    const isPast   = dateStr < todayStr;
-    cells += `
-      <div style="min-height:72px;padding:5px 6px;border-radius:6px;border:1px solid ${isToday ? 'var(--brand-h)' : aulasDay.length ? 'rgba(99,102,241,.3)' : 'var(--border)'};background:${isToday ? 'var(--brand-dim)' : aulasDay.length ? 'rgba(99,102,241,.04)' : 'transparent'};opacity:${isPast && !aulasDay.length ? '.4' : '1'}">
-        <div style="font-size:11px;font-weight:${isToday?'700':'400'};color:${isToday?'var(--brand-h)':'var(--t4)'};margin-bottom:3px;text-align:right">${d}</div>
-        ${aulasDay.map(a => `
-          ${a._isReuniao
-            ? `<div style="font-size:9.5px;background:rgba(109,40,217,.6);color:#e9d5ff;border-radius:3px;padding:2px 5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${a.tipo} — ${a.alunoNome}${a.alunoWpp?' · '+a.alunoWpp:''}" data-cal-realizar="${a.id}" data-aluno-id="${a.alunoId}">◆ ${a.alunoNome.split(' ')[0]} ${a.alunoWpp?'· '+a.alunoWpp:''}</div>`
-            : `<div style="font-size:9.5px;background:${turmaColor(a.turma).bg};color:${turmaColor(a.turma).text};border-radius:3px;padding:2px 5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${a.label} — Turma ${a.turmaName}" data-cal-aula="${a.id}" data-cal-turma="${a.turma}">
-                <span style="opacity:.8">${a.turmaName}</span> ${a.label.split('—')[0].trim()}
-              </div>`
-          }`).join('')}
-      </div>`;
-  }
-
-  return `
-  <div class="page">
-    <div class="page-hdr">
-      <div>
-        <div class="page-title">Calendário</div>
-        <div class="page-sub">${myAulas.length} aula${myAulas.length!==1?'s':''} agendada${myAulas.length!==1?'s':''}</div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" data-action="nova-reuniao-calendario">${I.plus} Nova Reunião</button>
-        ${isGod() || isBruna() ? `<button class="btn btn-ghost" data-action="marcar-aula">${I.plus} Marcar Aula</button>` : ''}
-      </div>
-    </div>
-    <div class="page-body">
-
-      <!-- Month navigator -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <button class="btn btn-ghost btn-sm" data-cal-nav="-1">${I.back} Anterior</button>
-        <div style="display:flex;align-items:center;gap:12px">
-          <span style="font-family:var(--fh);font-weight:600;font-size:16px;color:var(--t1)">${monthNames[month]} ${year}</span>
-          <div class="inner-tabs" style="margin:0">
-            <div class="inner-tab ${state.calView==='month'?'active':''}" data-cal-view="month" style="font-size:12px;padding:3px 10px">Mês</div>
-            <div class="inner-tab ${state.calView==='week'?'active':''}" data-cal-view="week" style="font-size:12px;padding:3px 10px">Semana</div>
-          </div>
-        </div>
-        <button class="btn btn-ghost btn-sm" data-cal-nav="1">Próximo <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg></button>
-      </div>
-
-      <!-- Day headers -->
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
-        ${['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(d=>`<div style="font-size:10px;font-weight:600;color:var(--t4);text-align:center;padding:4px 0">${d}</div>`).join('')}
-      </div>
-
-      <!-- Calendar grid -->
-      ${state.calView === 'week' ? (() => {
-        // Week view: show only 7 cells starting from the selected week
-        const allCells = [];
-        for (let i = 0; i < pad; i++) allCells.push(null);
-        for (let d = 1; d <= daysInMonth; d++) allCells.push(d);
-        const weekStart = (state.calWeek||0) * 7;
-        const weekCells = allCells.slice(weekStart, weekStart + 7);
-        // week nav
-        const totalWeeks = Math.ceil((pad + daysInMonth) / 7);
-        return `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <button class="btn btn-ghost btn-sm" data-cal-week="-1" ${(state.calWeek||0)<=0?'disabled':''}>← Semana anterior</button>
-            <span style="font-size:12px;color:var(--t3)">Semana ${(state.calWeek||0)+1} de ${totalWeeks}</span>
-            <button class="btn btn-ghost btn-sm" data-cal-week="1" ${(state.calWeek||0)>=totalWeeks-1?'disabled':''}>Próxima semana →</button>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:24px">
-            ${weekCells.map(d => {
-              if (!d) return '<div></div>';
-              const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-              const isToday = dateStr === todayStr;
-              const aulasDay = byDate[d] || [];
-              const isPast = dateStr < todayStr;
-              return `<div style="min-height:110px;padding:8px;border-radius:6px;border:1px solid ${isToday?'var(--brand-h)':aulasDay.length?'rgba(99,102,241,.3)':'var(--border)'};background:${isToday?'var(--brand-dim)':aulasDay.length?'rgba(99,102,241,.04)':'transparent'};opacity:${isPast&&!aulasDay.length?'.4':'1'}">
-                <div style="font-size:13px;font-weight:${isToday?'700':'500'};color:${isToday?'var(--brand-h)':'var(--t2)'};margin-bottom:5px">${d}</div>
-                ${aulasDay.map(a => `
-                  ${a._isReuniao
-                    ? `<div style="font-size:10px;background:rgba(109,40,217,.6);color:#e9d5ff;border-radius:3px;padding:3px 6px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${a.tipo} — ${a.alunoNome}" data-cal-realizar="${a.id}" data-aluno-id="${a.alunoId}">◆ ${a.alunoNome.split(' ')[0]}</div>`
-                    : `<div style="font-size:10px;background:${turmaColor(a.turma).bg};color:${turmaColor(a.turma).text};border-radius:3px;padding:3px 6px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" title="${a.label} — Turma ${a.turmaName}" data-cal-aula="${a.id}" data-cal-turma="${a.turma}">
-                        <span style="opacity:.8">${a.turmaName}</span> ${a.label.split('—')[0].trim()}
-                      </div>`
-                  }`).join('')}
-              </div>`;
-            }).join('')}
-          </div>`;
-      })() : `
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:24px">
-        ${cells}
-      </div>`}
-
-      <!-- Upcoming -->
-      ${upcoming.length > 0 ? `
-      <div class="divider"></div>
-      <div class="section-title" style="margin-bottom:12px">Próximas Aulas</div>
-      ${upcoming.slice(0,10).map(a => {
-        const d = new Date(a.data + 'T12:00');
-        const isMyAula = a.resp === myName || a.aux === myName;
-        return `
-        <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid ${turmaColor(a.turma).bg}44;border-radius:var(--r2);margin-bottom:8px;background:${turmaColor(a.turma).bg}11;transition:border-color .15s">
-          <div style="width:46px;height:46px;border-radius:var(--r);background:${turmaColor(a.turma).bg};display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
-            <span style="font-size:17px;font-weight:700;font-family:var(--fh);color:${turmaColor(a.turma).text};line-height:1">${d.getDate()}</span>
-            <span style="font-size:9px;color:${turmaColor(a.turma).text};opacity:.8;text-transform:uppercase">${monthNames[d.getMonth()].slice(0,3)}</span>
-          </div>
-          <div style="flex:1;min-width:0">
-            <div style="font-family:var(--fh);font-weight:600;font-size:13.5px;color:var(--t1)">${a.label}</div>
-            <div style="font-size:12px;color:var(--t4);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap">
-              <span style="color:var(--brand-h)">${a.turmaName}</span>
-              ${a.resp ? `<span>Responsável: ${a.resp}</span>` : ''}
-              ${a.aux  ? `<span>Auxiliar: ${a.aux}</span>`    : ''}
-            </div>
-          </div>
-          ${isMyAula ? `<span class="pill pill-blue" style="font-size:10px">Minha aula</span>` : ''}
-          <span style="font-size:12px;color:var(--t4);flex-shrink:0">${a.data}</span>
-        </div>`;
-      }).join('')}
-      ${upcoming.length > 10 ? `<div style="text-align:center;font-size:12.5px;color:var(--t4);padding:8px">+ ${upcoming.length-10} mais</div>` : ''}
-      ` : `
-      <div class="divider"></div>
-      <div class="empty-state" style="padding:24px 0">${I.calendar}<p>Nenhuma aula agendada</p><p style="margin-top:4px;font-size:12px">Acesse uma turma e use "Agendar Aula" para adicionar</p></div>
-      `}
-
-      <!-- Upcoming Reunioes -->
-      ${upcomingReu.length > 0 ? `
-      <div class="divider"></div>
-      <div class="section-title" style="margin-bottom:12px">Reuniões Agendadas</div>
-      ${upcomingReu.slice(0,8).map(r => {
-        const d = new Date(r.data + 'T12:00');
-        return `
-        <div style="border:1px solid rgba(124,58,237,.35);border-radius:var(--r2);margin-bottom:8px;background:rgba(124,58,237,.07);overflow:hidden">
-          <div style="display:flex;align-items:center;gap:12px;padding:11px 14px">
-            <div style="width:46px;height:46px;border-radius:var(--r);background:rgba(124,58,237,.2);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
-              <span style="font-size:17px;font-weight:700;font-family:var(--fh);color:#c4b5fd;line-height:1">${d.getDate()}</span>
-              <span style="font-size:9px;color:#c4b5fd;text-transform:uppercase">${['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][d.getMonth()]}</span>
-            </div>
-            <div style="flex:1;min-width:0">
-              <div style="font-family:var(--fh);font-weight:600;font-size:13.5px;color:var(--t1)">
-              ${r.tipo.includes('1:1') ? `MBA: ${r.tipo} — ${r.alunoNome}${state.alunos.find(x=>x.id===r.alunoId)?.whatsapp?' · '+state.alunos.find(x=>x.id===r.alunoId).whatsapp:''}` : r.tipo}
-            </div>
-              <div style="font-size:12px;color:var(--t4);margin-top:2px">
-                <span style="color:var(--brand-h);cursor:pointer;font-weight:500" data-open-aluno="${r.alunoId}" data-open-tab="reunioes">${r.alunoNome}</span>
-                ${r.turma ? `<span style="color:var(--t4)"> · ${r.turma}</span>` : ''}
-                ${r.responsavelId ? `<span style="color:var(--t4)"> · ${PROFILES.find(p=>p.id===r.responsavelId)?.name||''}</span>` : ''}
-              </div>
-            </div>
-            <button class="btn btn-xs" style="background:rgba(124,58,237,.2);color:#c4b5fd;border:1px solid rgba(124,58,237,.4)" data-cal-realizar="${r.id}" data-aluno-id="${r.alunoId}">Realizar</button>
-          </div>
-          ${(() => {
-            // Show last proxPassos as context
-            const al = state.alunos.find(x=>x.id===r.alunoId);
-            const lastRealized = (al?.reunioes||[]).filter(x=>x.realizada&&x.proxPassos).sort((a,b)=>b.data.localeCompare(a.data))[0];
-            if (!lastRealized) return '';
-            return `<div style="padding:8px 14px 10px;border-top:1px solid rgba(124,58,237,.2);font-size:12px;color:var(--t3);line-height:1.6">
-              <span style="font-size:10px;font-weight:600;color:#c4b5fd;text-transform:uppercase;letter-spacing:.5px">Contexto — última reunião</span><br>
-              ${lastRealized.proxPassos}
-            </div>`;
-          })()}
-        </div>`;
-      }).join('')}
-      ` : ''}
-
-      <!-- Past -->
-      ${past.length > 0 ? `
-      <div class="divider"></div>
-      <div class="section-title" style="margin-bottom:12px">Aulas Realizadas</div>
-      ${past.slice(0,5).map(a => {
-        const d = new Date(a.data + 'T12:00');
-        const pMap = (state.presenca[a.turma]||{})[a.id] || {};
-        const alunos = getAlunosByTurma(a.turma);
-        const presentes = alunos.filter(al => pMap[al.id]==='sim').length;
-        const taxa = alunos.length ? Math.round(presentes/alunos.length*100) : 0;
-        return `
-        <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r2);margin-bottom:8px;background:var(--bg-s);opacity:.8">
-          <div style="width:46px;height:46px;border-radius:var(--r);background:var(--bg-t);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
-            <span style="font-size:17px;font-weight:700;font-family:var(--fh);color:var(--t4);line-height:1">${d.getDate()}</span>
-            <span style="font-size:9px;color:var(--t4);text-transform:uppercase">${monthNames[d.getMonth()].slice(0,3)}</span>
-          </div>
-          <div style="flex:1">
-            <div style="font-family:var(--fh);font-weight:500;font-size:13px;color:var(--t2)">${a.label}</div>
-            <div style="font-size:12px;color:var(--t4);margin-top:2px"><span style="color:var(--brand-h)">${a.turmaName}</span>${a.resp ? ` · ${a.resp}` : ''}</div>
-          </div>
-          <span class="pill ${taxa>=75?'pill-green':taxa>=50?'pill-amber':'pill-red'}" style="font-size:10px">${taxa}% presença</span>
-        </div>`;
-      }).join('')}
-      ` : ''}
-
-    </div>
-  </div>`;
-}
-
-
 // ═══════════════════════════════════════════════════════
 // ADMIN PAGE
 // ═══════════════════════════════════════════════════════
