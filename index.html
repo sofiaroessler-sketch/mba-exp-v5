@@ -1736,7 +1736,7 @@ function buildMedicosPage() {
 
   // Especialidade filter
   if (state.filtroEspecialidade && state.filtroEspecialidade !== 'todas') {
-    lista = lista.filter(a => (a.especialidade||'') === state.filtroEspecialidade);
+    lista = lista.filter(a => (a.especialidade||'').trim().toLowerCase() === state.filtroEspecialidade.trim().toLowerCase());
   }
 
   // Search applies to all tabs
@@ -1777,7 +1777,7 @@ function buildMedicosPage() {
       <div class="inner-tabs" style="margin:0">
         ${filtros.map(f=>`<div class="inner-tab ${state.filtroMedicos===f.id?'active':''}" data-filtro="${f.id}">${f.label}</div>`).join('')}
       </div>
-      <select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="state.filtroEspecialidade=this.value;render()">
+      <select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="console.log('filtro esp:', this.value); state.filtroEspecialidade=this.value;render()">
         <option value="todas" ${(state.filtroEspecialidade||'todas')==='todas'?'selected':''}>Todas especialidades</option>
         ${ESPECIALIDADES.map(s=>`<option value="${s}" ${state.filtroEspecialidade===s?'selected':''}>${s}</option>`).join('')}
       </select>
