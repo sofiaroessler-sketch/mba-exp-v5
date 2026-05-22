@@ -742,6 +742,8 @@ let state = {
   alunoTab: 'info',
   filtroMedicos: 'todos',
   searchMedicos: '',
+  searchHistorico: '',
+  selHistoricoAluno: null,
   modal: null,          // {type, data}
   toast: null,
   aulaModal: null,      // {turmaId}
@@ -899,6 +901,7 @@ const I = {
   userIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   reportIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+  histIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
 };
 
 // ═══════════════════════════════════════════════════════
@@ -1000,6 +1003,7 @@ function buildSidebar() {
     {id:'calendario',label:'Calendário',icon:I.calendar},
     ...(isYgor()  ? [{id:'admin',         label:'Admin',                  icon:I.adminIcon}] : []),
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
+    ...(isBruna() ? [{id:'historico', label:'Histórico', icon:I.histIcon}] : []),
     {id:'minhas-reunioes', label:'Minhas Reuniões', icon:I.cal},
     {id:'kanban', label:'Situação das Turmas', icon:I.kanban},
   ];
@@ -1048,6 +1052,7 @@ function buildMain() {
   if (state.page === 'calendario') return buildCalendarioPage();
   if (state.page === 'admin')          return buildAdminPage();
   if (state.page === 'monitoramento')  return buildMonitoramentoPage();
+  if (state.page === 'historico')      return buildHistoricoPage();
   if (state.page === 'minhas-reunioes') return buildMinhasReunioesPage();
   if (state.page === 'kanban')  return buildKanbanPage();
   return '<div class="page"><div class="empty-state">Página não encontrada</div></div>';
@@ -2773,6 +2778,26 @@ function attachEvents() {
   document.getElementById('search-admin-medicos')?.addEventListener('input', e => {
     state.searchAdminMedicos = e.target.value;
     render();
+  });
+
+  document.getElementById('search-historico')?.addEventListener('input', e => {
+    state.searchHistorico = e.target.value;
+    state.selHistoricoAluno = null;
+    render();
+  });
+
+  document.getElementById('clear-historico')?.addEventListener('click', () => {
+    state.searchHistorico = '';
+    state.selHistoricoAluno = null;
+    render();
+  });
+
+  document.querySelectorAll('[data-sel-historico]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.selHistoricoAluno = el.dataset.selHistorico;
+      state.searchHistorico = state.alunos.find(a => a.id === el.dataset.selHistorico)?.nome || '';
+      render();
+    });
   });
 
   // Presença CYCLE: Presente→sim(green)→sim2(yellow)→off
@@ -5114,6 +5139,185 @@ function buildMinhasReunioesPage() {
         <div class="section-title">Realizadas</div>
         ${realizadas.map(r => buildReuItem(r, true)).join('')}
       ` : ''}
+    </div>
+  </div>`;
+}
+
+function buildEventosAluno(a) {
+  const eventos = [];
+  const aulasDatesT = state.aulasDates[a.turma] || {};
+  const presencaT   = (state.presenca[a.turma] || {});
+  const etapas      = state.etapas[a.id] || {};
+
+  // Presenças em aulas
+  AULAS_DEF.filter(ad => ad.bloco !== '11').forEach(ad => {
+    const pres = (presencaT[ad.id] || {})[a.id];
+    const data = aulasDatesT[ad.id]?.data || null;
+    if (!pres) return;
+    if (pres === 'sim' || pres === 'sim2') {
+      eventos.push({ ts: data || '', tipo: 'presenca', icon: '✓', color: 'var(--green)', desc: `Presente — ${ad.label}` });
+    } else if (pres === 'nao') {
+      eventos.push({ ts: data || '', tipo: 'falta', icon: '✗', color: 'var(--red-t)', desc: `Faltou — ${ad.label}` });
+    } else if (pres === 'link') {
+      eventos.push({ ts: data || '', tipo: 'link', icon: '🔗', color: 'var(--amber-t)', desc: `Assistiu via link — ${ad.label}` });
+    }
+  });
+
+  // Reuniões
+  (a.reunioes || []).forEach(r => {
+    if (!r.data) return;
+    if (r.realizada) {
+      const resp = r.responsavelId ? (PROFILES.find(p=>p.id===r.responsavelId)?.name || r.responsavelId) : '';
+      eventos.push({ ts: r.data, tipo: 'reuniao_realizada', icon: '📋', color: 'var(--brand-h)', desc: `${r.tipo} realizada${resp ? ' — ' + resp : ''}` });
+    } else {
+      eventos.push({ ts: r.data, tipo: 'reuniao_agendada', icon: '📅', color: 'var(--t4)', desc: `${r.tipo} agendada` });
+    }
+  });
+
+  // Etapas iniciais
+  const etapaLabels = { forms: 'Formulário de Onboarding', onb: 'Reunião de Onboarding', fin: 'Reunião Fin/Leads', sec: 'Treinamento da Secretária' };
+  Object.entries(etapaLabels).forEach(([id, label]) => {
+    if (etapas[id + '_done']) {
+      eventos.push({ ts: '', tipo: 'etapa', icon: '🎯', color: 'var(--green)', desc: `Etapa concluída — ${label}` });
+    }
+  });
+
+  // Status changes não temos timestamp, mas podemos registrar o status atual como evento contextual
+  if (a.status === 'churn') {
+    eventos.push({ ts: '', tipo: 'status', icon: '⚠', color: 'var(--red-t)', desc: 'Status: Churn' });
+  } else if (a.status === 'pausado') {
+    eventos.push({ ts: '', tipo: 'status', icon: '⏸', color: 'var(--amber-t)', desc: 'Status: Pausado' });
+  }
+
+  // Sort: com data primeiro (desc), sem data por último
+  eventos.sort((a, b) => {
+    if (!a.ts && !b.ts) return 0;
+    if (!a.ts) return 1;
+    if (!b.ts) return -1;
+    return b.ts.localeCompare(a.ts);
+  });
+
+  return eventos;
+}
+
+function buildHistoricoPage() {
+  const q = (state.searchHistorico || '').toLowerCase();
+  const todosAlunos = state.alunos.filter(a => a.status !== 'inativo');
+  const sugestoes = q
+    ? todosAlunos.filter(a => a.nome.toLowerCase().includes(q)).slice(0, 6)
+    : [];
+
+  const selAluno = state.selHistoricoAluno
+    ? state.alunos.find(x => x.id === state.selHistoricoAluno)
+    : null;
+
+  const eventos = selAluno ? buildEventosAluno(selAluno) : [];
+
+  // Group events by date
+  const porData = {};
+  eventos.forEach(e => {
+    const key = e.ts || 'sem-data';
+    if (!porData[key]) porData[key] = [];
+    porData[key].push(e);
+  });
+
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  function fmtDate(ts) {
+    if (!ts) return 'Sem data registrada';
+    const d = new Date(ts + 'T12:00');
+    return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  const taxaCls = selAluno ? (selAluno.taxa_presenca>=75?'pill-green':selAluno.taxa_presenca>=50?'pill-amber':'pill-red') : '';
+  const reuTotal = selAluno ? (selAluno.reunioes||[]).filter(r=>r.realizada).length : 0;
+  const faltasTotal = eventos.filter(e=>e.tipo==='falta').length;
+  const etapasTotal = Object.keys(state.etapas[selAluno?.id]||{}).filter(k=>k.endsWith('_done')).length;
+
+  return `
+  <div class="page">
+    <div class="page-hdr">
+      <div>
+        <div class="page-title">Histórico</div>
+        <div class="page-sub">Linha do tempo individual de cada médico</div>
+      </div>
+    </div>
+    <div class="page-body">
+
+      <!-- Busca -->
+      <div style="position:relative;max-width:420px;margin-bottom:${sugestoes.length||selAluno?'8px':'32px'}">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
+        <input class="inp" id="search-historico" placeholder="Buscar médico..." value="${state.searchHistorico||''}"
+          style="padding-left:34px;font-size:14px;padding-top:10px;padding-bottom:10px" autocomplete="off">
+        ${selAluno ? `<button style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t4);font-size:18px;line-height:1" id="clear-historico">×</button>` : ''}
+      </div>
+
+      <!-- Sugestões dropdown -->
+      ${sugestoes.length > 0 && !selAluno ? `
+      <div style="background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);max-width:420px;overflow:hidden;margin-bottom:24px">
+        ${sugestoes.map(a => `
+        <div style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);transition:background .1s" data-sel-historico="${a.id}">
+          <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--brand-h);flex-shrink:0">${ini(a.nome)}</div>
+          <div>
+            <div style="font-size:13.5px;font-weight:500;color:var(--t1)">${a.nome}</div>
+            <div style="font-size:11.5px;color:var(--t4)">${a.turma||'Sem turma'} · ${a.responsavel||'Sem responsável'}</div>
+          </div>
+          <span class="pill ${a.status==='ativo'?'pill-green':a.status==='churn'?'pill-red':'pill-amber'}" style="font-size:10px;margin-left:auto">${a.status}</span>
+        </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Médico selecionado -->
+      ${selAluno ? `
+
+      <!-- Header do médico -->
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:20px">
+        <div style="width:46px;height:46px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--brand-h);flex-shrink:0">${ini(selAluno.nome)}</div>
+        <div style="flex:1">
+          <div style="font-family:var(--fh);font-weight:700;font-size:16px;color:var(--t1)">${selAluno.nome}</div>
+          <div style="font-size:12px;color:var(--t4);margin-top:3px">${selAluno.turma||'Sem turma'} · Resp: ${selAluno.responsavel||'—'}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
+            <div style="font-size:18px;font-weight:700;color:var(--t1)">${selAluno.taxa_presenca}%</div>
+            <div style="font-size:10px;color:var(--t4);margin-top:2px">Presença</div>
+          </div>
+          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
+            <div style="font-size:18px;font-weight:700;color:var(--t1)">${reuTotal}</div>
+            <div style="font-size:10px;color:var(--t4);margin-top:2px">Reuniões</div>
+          </div>
+          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
+            <div style="font-size:18px;font-weight:700;color:${faltasTotal>0?'var(--red-t)':'var(--t1)'}">${faltasTotal}</div>
+            <div style="font-size:10px;color:var(--t4);margin-top:2px">Faltas</div>
+          </div>
+          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
+            <div style="font-size:18px;font-weight:700;color:var(--t1)">${etapasTotal}/4</div>
+            <div style="font-size:10px;color:var(--t4);margin-top:2px">Etapas</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      ${eventos.length === 0 ? `<div class="empty-state" style="padding:32px 0">${I.histIcon}<p>Nenhum evento registrado ainda</p></div>` : `
+      <div style="position:relative;padding-left:24px">
+        <div style="position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border);border-radius:1px"></div>
+        ${Object.entries(porData).map(([data, evts]) => `
+          <div style="margin-bottom:20px">
+            <div style="font-size:11.5px;font-weight:600;color:var(--t4);margin-bottom:10px;letter-spacing:.3px">${fmtDate(data === 'sem-data' ? '' : data)}</div>
+            ${evts.map(e => `
+            <div style="position:relative;display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:6px">
+              <div style="position:absolute;left:-20px;top:50%;transform:translateY(-50%);width:12px;height:12px;border-radius:50%;background:${e.color};border:2px solid var(--bg);flex-shrink:0"></div>
+              <span style="font-size:15px;flex-shrink:0">${e.icon}</span>
+              <span style="font-size:13px;color:var(--t2);line-height:1.4">${e.desc}</span>
+            </div>`).join('')}
+          </div>
+        `).join('')}
+      </div>`}
+
+      ` : !q ? `
+      <div class="empty-state" style="padding:48px 0">
+        ${I.histIcon}
+        <p style="margin-top:12px">Digite o nome de um médico para ver o histórico</p>
+      </div>` : ''}
+
     </div>
   </div>`;
 }
