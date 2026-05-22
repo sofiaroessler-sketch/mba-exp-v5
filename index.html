@@ -46,6 +46,7 @@ button,input,select,textarea{font-family:var(--fb);outline:none;font-size:14px}
 .sb-item.active svg{opacity:1}
 .sb-badge{background:var(--brand);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:auto}
 .sb-badge.red{background:var(--red)}
+.sb-badge.amber{background:#d97706;color:#fff}
 .sb-foot{padding:12px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:9px}
 .sb-av{width:30px;height:30px;border-radius:50%;background:var(--brand-dim);border:1px solid rgba(99,102,241,.3);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:11px;font-weight:600;color:var(--brand-h);flex-shrink:0}
 .sb-uname{font-size:12.5px;font-weight:500;color:var(--t2);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -888,13 +889,14 @@ function buildLoginPage() {
 function buildSidebar() {
   const u = state.user;
   const minhas = getMinhasTarefas().filter(t=>!t.done).length;
+  const novosMedicos = state.alunos.filter(a => a.status==='ativo' && !a.responsavel).length;
   const isAdminOnly = u.id === 'admin';
   const nav = isAdminOnly ? [
     {id:'admin', label:'Admin', icon:I.adminIcon},
   ] : [
     {id:'turmas',    label:'Turmas',    icon:I.turmas},
     {id:'tarefas',   label:'Tarefas',   icon:I.tasks, badge: minhas > 0 ? minhas : 0},
-    {id:'medicos',   label:'Médicos',   icon:I.medicos},
+    {id:'medicos',   label:'Médicos',   icon:I.medicos, badge: (isYgor()||isBruna()) && novosMedicos > 0 ? novosMedicos : 0, badgeColor:'amber'},
     {id:'calendario',label:'Calendário',icon:I.calendar},
     ...(isYgor()  ? [{id:'admin',         label:'Admin',                  icon:I.adminIcon}] : []),
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
@@ -911,10 +913,15 @@ function buildSidebar() {
         <div class="sb-item ${state.page===n.id&&!state.selTurma?'active':''}" data-nav="${n.id}">
           ${n.icon}
           <span>${n.label}</span>
-          ${n.badge ? `<span class="sb-badge red">${n.badge}</span>` : ''}
+          ${n.badge ? `<span class="sb-badge ${n.badgeColor||'red'}">${n.badge}</span>` : ''}
         </div>
       `).join('')}
     </div>
+    ${(isYgor()||isBruna()) && novosMedicos > 0 ? `
+    <div style="margin:0 12px;padding:10px 12px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2);cursor:pointer" data-nav="medicos" data-set-filtro="novos">
+      <div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:3px">🔔 ${novosMedicos} novo${novosMedicos>1?'s':''} médico${novosMedicos>1?'s':''}</div>
+      <div style="font-size:11px;color:var(--t4)">Aguardando designação de responsável</div>
+    </div>` : ''}
     <div class="sb-foot" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px">
       <div style="display:flex;align-items:center;gap:8px">
         <div class="sb-av">${ini(u.name)}</div>
@@ -2357,6 +2364,7 @@ function attachEvents() {
       state.page = el.dataset.nav;
       state.selTurma = null;
       state.selAluno = null;
+      if (el.dataset.setFiltro) state.filtroMedicos = el.dataset.setFiltro;
       logAccess(el.dataset.nav);
       render();
     });
