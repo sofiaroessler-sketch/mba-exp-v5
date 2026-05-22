@@ -1859,6 +1859,7 @@ function buildDetailPanel() {
         </div>
       </div>
       <div style="display:flex;gap:6px">
+        ${isBruna() ? `<button class="btn btn-ghost btn-sm" data-ir-historico="${a.id}" title="Ver histórico completo">${I.histIcon} Histórico</button>` : ''}
         <button class="btn-icon" data-action="editar-aluno" title="Editar">${I.edit}</button>
         <button class="btn-icon" data-close-panel title="Fechar">${I.x}</button>
       </div>
@@ -2702,6 +2703,16 @@ function attachEvents() {
   document.getElementById('modal-overlay')?.addEventListener('click', () => { state.modal = null; render(); });
 
   // Close panel
+  document.querySelector('[data-ir-historico]')?.addEventListener('click', el => {
+    const alunoId = el.currentTarget.dataset.irHistorico;
+    const aluno = state.alunos.find(a => a.id === alunoId);
+    state.selAluno = null;
+    state.page = 'historico';
+    state.selHistoricoAluno = alunoId;
+    state.searchHistorico = aluno?.nome || '';
+    render();
+  });
+
   document.querySelector('[data-close-panel]')?.addEventListener('click', () => {
     state.selAluno = null; state.editandoAluno = false; render();
   });
