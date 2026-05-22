@@ -728,6 +728,22 @@ const AULAS_DEF = [
 
 const REUNIAO_TIPOS = ['Onboarding','Reunião Individual','1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Reunião de Planilhas','Fora do Escopo','Outros'];
 
+const ESPECIALIDADES = [
+  'Acupuntura','Alergia e Imunologia','Anestesiologia','Angiologia','Cardiologia',
+  'Cirurgia Cardiovascular','Cirurgia da Mão','Cirurgia de Cabeça e Pescoço',
+  'Cirurgia do Aparelho Digestivo','Cirurgia Geral','Cirurgia Pediátrica',
+  'Cirurgia Plástica','Cirurgia Torácica','Cirurgia Vascular','Clínica Médica',
+  'Coloproctologia','Dermatologia','Endocrinologia','Endoscopia','Gastroenterologia',
+  'Genética Médica','Geriatria','Ginecologia e Obstetrícia','Hematologia','Hepatologia',
+  'Homeopatia','Infectologia','Mastologia','Medicina de Emergência','Medicina de Família',
+  'Medicina do Esporte','Medicina do Trabalho','Medicina Física e Reabilitação',
+  'Medicina Intensiva','Medicina Legal','Medicina Nuclear','Medicina Preventiva',
+  'Nefrologia','Neurocirurgia','Neurologia','Nutrologia','Oftalmologia','Oncologia',
+  'Ortopedia e Traumatologia','Otorrinolaringologia','Patologia','Pediatria',
+  'Pneumologia','Psiquiatria','Radiologia','Radioterapia','Reumatologia',
+  'Urologia','Outro'
+];
+
 let state = {
   user: null,
   loginMode: null,  // 'change-password' after invite
@@ -741,6 +757,7 @@ let state = {
   selAluno: null,       // aluno ID in detail panel
   alunoTab: 'info',
   filtroMedicos: 'todos',
+  filtroEspecialidade: 'todas',
   searchMedicos: '',
   searchHistorico: '',
   selHistoricoAluno: null,
@@ -1180,7 +1197,7 @@ function buildTurmaDetail() {
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" data-action="alocar-existente-turma">${I.userIcon} Adicionar existente</button>
         ${isGod() ? `<button class="btn btn-primary btn-sm" data-action="novo-medico-turma">${I.plus} Novo Médico</button>` : ''}
-        ${isBruna() || isGod() ? `<button class="btn btn-ghost btn-sm" data-action="marcar-aula">${I.check} Marcar Aula</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="marcar-aula">${I.check} Marcar Aula</button>
         <button class="btn btn-ghost btn-sm" data-action="editar-turma">${I.edit} Editar</button>
       </div>
     </div>
@@ -1273,7 +1290,7 @@ function buildCronograma(t, alunos) {
   }
 
   // Render aulas — full controls for Bruna/god, read-only for others
-  const canEditPresenca = isBruna() || isGod();
+  const canEditPresenca = true; // todos podem marcar presença
   const aulasHtml = aulasDone.map(({ad, done}, idx) => {
     if (!canEditPresenca) return buildAulaReadOnly(t, alunos, ad);
     if (done && !shouldExpand(idx, ad)) return buildDoneSummary(ad);
@@ -1717,6 +1734,11 @@ function buildMedicosPage() {
     lista = lista.filter(a => a.status==='ativo' && !a.responsavel);
   }
 
+  // Especialidade filter
+  if (state.filtroEspecialidade && state.filtroEspecialidade !== 'todas') {
+    lista = lista.filter(a => (a.especialidade||'') === state.filtroEspecialidade);
+  }
+
   // Search applies to all tabs
   if (state.searchMedicos) {
     const q = state.searchMedicos.toLowerCase();
@@ -1755,6 +1777,14 @@ function buildMedicosPage() {
       <div class="inner-tabs" style="margin:0">
         ${filtros.map(f=>`<div class="inner-tab ${state.filtroMedicos===f.id?'active':''}" data-filtro="${f.id}">${f.label}</div>`).join('')}
       </div>
+      ${(() => {
+        const specs = [...new Set(state.alunos.map(a=>a.especialidade||'').filter(Boolean))].sort();
+        if (!specs.length) return '';
+        return `<select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto">
+          <option value="todas" ${(state.filtroEspecialidade||'todas')==='todas'?'selected':''}>Todas especialidades</option>
+          ${specs.map(s=>`<option value="${s}" ${state.filtroEspecialidade===s?'selected':''}>${s}</option>`).join('')}
+        </select>`;
+      })()}
       <div style="margin-left:auto;position:relative">
         <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
         <input class="inp" id="search-medicos" placeholder="Buscar..." value="${state.searchMedicos}" style="padding-left:32px;width:200px;padding-top:7px;padding-bottom:7px">
@@ -1807,8 +1837,8 @@ function buildMedicoCard(a, clickable=true) {
 function buildDetailPanel() {
   const a = state.alunos.find(x=>x.id===state.selAluno);
   if (!a) return '';
-  const tabs = ['info','etapas','aulas','reunioes','okrs','notas'];
-  const tabLabels = {info:'Informações',etapas:'Etapas Iniciais',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
+  const tabs = ['info','etapas','historico','aulas','reunioes','okrs','notas'];
+  const tabLabels = {info:'Informações',etapas:'Etapas Iniciais',historico:'Histórico',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
   return `
   <div class="detail-panel">
     <div class="detail-hdr">
@@ -1833,6 +1863,7 @@ function buildDetailPanel() {
     <div class="detail-body">
       ${state.alunoTab==='info' ? buildDetailInfo(a) : ''}
       ${state.alunoTab==='etapas' ? buildDetailEtapas(a) : ''}
+      ${state.alunoTab==='historico' ? buildDetailHistorico(a) : ''}
       ${state.alunoTab==='aulas' ? buildDetailAulas(a) : ''}
       ${state.alunoTab==='reunioes' ? buildDetailReunioes(a) : ''}
       ${state.alunoTab==='okrs'  ? buildDetailOKRs(a)  : ''}
@@ -1891,6 +1922,39 @@ function buildDetailEtapas(a) {
   </div>`;
 }
 
+function buildDetailHistorico(a) {
+  const eventos = buildEventosAluno(a);
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  function fmtDate(ts) {
+    if (!ts) return 'Sem data registrada';
+    const d = new Date(ts + 'T12:00');
+    return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+  }
+  const porData = {};
+  eventos.forEach(e => {
+    const key = e.ts || 'sem-data';
+    if (!porData[key]) porData[key] = [];
+    porData[key].push(e);
+  });
+
+  if (eventos.length === 0) return `<div class="empty-state" style="padding:32px 0">${I.histIcon}<p>Nenhum evento registrado ainda</p></div>`;
+
+  return `
+  <div style="position:relative;padding-left:24px">
+    <div style="position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border);border-radius:1px"></div>
+    ${Object.entries(porData).map(([data, evts]) => `
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:600;color:var(--t4);margin-bottom:8px;letter-spacing:.3px">${fmtDate(data === 'sem-data' ? '' : data)}</div>
+        ${evts.map(e => `
+        <div style="position:relative;display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:5px">
+          <div style="position:absolute;left:-20px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:${e.color};border:2px solid var(--bg)"></div>
+          <span style="font-size:14px;flex-shrink:0">${e.icon}</span>
+          <span style="font-size:12.5px;color:var(--t2)">${e.desc}</span>
+        </div>`).join('')}
+      </div>`).join('')}
+  </div>`;
+}
+
 function buildDetailInfo(a) {
   const ed = state.editandoAluno;
   const ef = state.editForm;
@@ -1900,7 +1964,12 @@ function buildDetailInfo(a) {
     <div>
       <div class="field-row">
         <div class="field"><label class="lbl">Nome</label><input class="inp" id="ef-nome" value="${ef.nome||a.nome}"></div>
-        <div class="field"><label class="lbl">Especialidade</label><input class="inp" id="ef-esp" value="${ef.especialidade||a.especialidade||''}"></div>
+        <div class="field"><label class="lbl">Especialidade</label>
+          <select class="inp" id="ef-esp">
+            <option value="">—</option>
+            ${ESPECIALIDADES.map(e=>`<option value="${e}" ${(ef.especialidade||a.especialidade||'')===e?'selected':''}>${e}</option>`).join('')}
+          </select>
+        </div>
         <div class="field"><label class="lbl">Turma</label>
           <select class="inp" id="ef-turma">
             <option value="">—</option>
@@ -2187,7 +2256,12 @@ function buildModalNovoMedico() {
   return mWrap('Novo Médico', `
     <div class="field-row">
       <div class="field full"><label class="lbl">Nome completo *</label><input class="inp" id="m-nome" placeholder="Dr. Nome Sobrenome"></div>
-      <div class="field"><label class="lbl">Especialidade</label><input class="inp" id="m-esp" placeholder="Ex: Cardiologia"></div>
+      <div class="field"><label class="lbl">Especialidade</label>
+        <select class="inp" id="m-esp">
+          <option value="">—</option>
+          ${ESPECIALIDADES.map(e=>`<option value="${e}">${e}</option>`).join('')}
+        </select>
+      </div>
       <div class="field"><label class="lbl">Turma *</label>
         <select class="inp" id="m-turma">
           <option value="">Selecione</option>
@@ -2773,6 +2847,11 @@ function attachEvents() {
       const text = card.textContent.toLowerCase();
       card.style.display = (!q || text.includes(q)) ? '' : 'none';
     });
+  });
+
+  document.getElementById('filtro-especialidade')?.addEventListener('change', e => {
+    state.filtroEspecialidade = e.target.value;
+    render();
   });
 
   document.getElementById('search-admin-medicos')?.addEventListener('input', e => {
