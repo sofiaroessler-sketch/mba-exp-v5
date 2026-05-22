@@ -2783,7 +2783,30 @@ function attachEvents() {
   document.getElementById('search-historico')?.addEventListener('input', e => {
     state.searchHistorico = e.target.value;
     state.selHistoricoAluno = null;
-    render();
+    // Atualiza só as sugestões sem re-render completo
+    const q = e.target.value.toLowerCase();
+    const container = document.getElementById('historico-sugestoes');
+    if (!container) return;
+    if (!q) { container.innerHTML = ''; return; }
+    const sugestoes = state.alunos.filter(a => a.status !== 'inativo' && a.nome.toLowerCase().includes(q)).slice(0, 6);
+    if (!sugestoes.length) { container.innerHTML = ''; return; }
+    container.innerHTML = sugestoes.map(a => `
+      <div style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);transition:background .1s" data-sel-historico="${a.id}">
+        <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--brand-h);flex-shrink:0">${ini(a.nome)}</div>
+        <div>
+          <div style="font-size:13.5px;font-weight:500;color:var(--t1)">${a.nome}</div>
+          <div style="font-size:11.5px;color:var(--t4)">${a.turma||'Sem turma'} · ${a.responsavel||'Sem responsável'}</div>
+        </div>
+        <span style="margin-left:auto;font-size:10px;padding:2px 7px;border-radius:99px;background:${a.status==='ativo'?'rgba(5,150,105,.2)':a.status==='churn'?'rgba(229,62,62,.2)':'rgba(217,119,6,.2)'};color:${a.status==='ativo'?'var(--green-t)':a.status==='churn'?'var(--red-t)':'var(--amber-t)'}">${a.status}</span>
+      </div>`).join('');
+    // Re-attach listeners nas sugestões novas
+    container.querySelectorAll('[data-sel-historico]').forEach(el => {
+      el.addEventListener('click', () => {
+        state.selHistoricoAluno = el.dataset.selHistorico;
+        state.searchHistorico = state.alunos.find(a => a.id === el.dataset.selHistorico)?.nome || '';
+        render();
+      });
+    });
   });
 
   document.getElementById('clear-historico')?.addEventListener('click', () => {
@@ -5252,18 +5275,17 @@ function buildHistoricoPage() {
       </div>
 
       <!-- Sugestões dropdown -->
-      ${sugestoes.length > 0 && !selAluno ? `
-      <div style="background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);max-width:420px;overflow:hidden;margin-bottom:24px">
-        ${sugestoes.map(a => `
-        <div style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);transition:background .1s" data-sel-historico="${a.id}">
+      <div id="historico-sugestoes" style="background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);max-width:420px;overflow:hidden;margin-bottom:${sugestoes.length > 0 && !selAluno ? '24px' : '0'}">
+        ${sugestoes.length > 0 && !selAluno ? sugestoes.map(a => `
+        <div style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)" data-sel-historico="${a.id}">
           <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--brand-h);flex-shrink:0">${ini(a.nome)}</div>
           <div>
             <div style="font-size:13.5px;font-weight:500;color:var(--t1)">${a.nome}</div>
             <div style="font-size:11.5px;color:var(--t4)">${a.turma||'Sem turma'} · ${a.responsavel||'Sem responsável'}</div>
           </div>
           <span class="pill ${a.status==='ativo'?'pill-green':a.status==='churn'?'pill-red':'pill-amber'}" style="font-size:10px;margin-left:auto">${a.status}</span>
-        </div>`).join('')}
-      </div>` : ''}
+        </div>`).join('') : ''}
+      </div>
 
       <!-- Médico selecionado -->
       ${selAluno ? `
