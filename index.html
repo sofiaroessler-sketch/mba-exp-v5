@@ -366,7 +366,7 @@ function scheduleSave() {
   _saveTimer = setTimeout(saveStateToDb, 1500);
 }
 
-async function saveStateToDb() {
+async function saveStateToDb(retryCount = 0) {
   const snapshot = {
     alunos:       state.alunos,
     turmas:       state.turmas,
@@ -382,10 +382,57 @@ async function saveStateToDb() {
     profiles:     state.profiles,
     reunioes:     state.reunioes,
   };
+
   try {
-    console.log('[supa] salvando...');
+    // Verifica se alguém salvou depois que carregamos
+    const current = await dbSelect('app_state', 'id=eq.main&select=updated_at');
+    const remoteTs = current?.[0]?.updated_at;
+
+    if (remoteTs && state._loadedAt && remoteTs !== state._loadedAt) {
+      // Conflito detectado — recarrega e reaplica mudanças por cima
+      if (retryCount >= 2) {
+        showToast('Conflito de dados — recarregue a página', 'err');
+        return;
+      }
+      console.warn('[supa] conflito detectado, fazendo merge...');
+
+      // Carrega estado remoto mais recente
+      const remoteRows = await dbSelect('app_state', 'id=eq.main&select=data');
+      const remoteData = remoteRows?.[0]?.data || {};
+
+      // Merge: aplica o snapshot local por cima do remoto
+      // Campos que o usuário atual pode ter mudado sobrescrevem o remoto
+      // Campos que ele não tocou ficam com a versão mais recente do remoto
+      const merged = {
+        ...remoteData,
+        alunos:      snapshot.alunos,
+        tarefas:     snapshot.tarefas,
+        presenca:    snapshot.presenca,
+        etapas:      snapshot.etapas,
+        aulasDates:  snapshot.aulasDates,
+        linkEnviado: snapshot.linkEnviado,
+        aulaAberta:  snapshot.aulaAberta,
+        faltaLog:    snapshot.faltaLog,
+        riscoCriteria: snapshot.riscoCriteria,
+        accessLog:   [
+          ...(remoteData.accessLog || []),
+          ...(snapshot.accessLog || []).filter(e =>
+            !(remoteData.accessLog || []).some(r => r.ts === e.ts && r.userId === e.userId)
+          )
+        ],
+      };
+
+      state._loadedAt = remoteTs;
+      await dbUpsert('app_state', { id: 'main', data: merged, updated_at: new Date().toISOString() });
+      state._loadedAt = new Date().toISOString();
+      showToast('Dados sincronizados com sucesso', 'ok');
+      return;
+    }
+
     await dbUpsert('app_state', { id: 'main', data: snapshot, updated_at: new Date().toISOString() });
+    state._loadedAt = new Date().toISOString();
     console.log('[supa] salvo com sucesso');
+
   } catch(e) {
     console.error('[supa] ERRO ao salvar:', e.message);
     showToast('Erro ao salvar: ' + e.message, 'err');
@@ -394,9 +441,10 @@ async function saveStateToDb() {
 
 async function loadStateFromDb() {
   try {
-    const rows = await dbSelect('app_state', 'id=eq.main&select=data');
+    const rows = await dbSelect('app_state', 'id=eq.main&select=data,updated_at');
     if (rows && rows[0]?.data) {
       const d = rows[0].data;
+      state._loadedAt = rows[0].updated_at; // guarda timestamp para detecção de conflito
       if (d.alunos)       state.alunos       = d.alunos;
       if (d.turmas)       state.turmas       = d.turmas;
       if (d.tarefas)      state.tarefas      = d.tarefas;
