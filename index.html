@@ -2918,6 +2918,11 @@ function attachEvents() {
     });
   });
 
+  document.getElementById('cal-turma-filter')?.addEventListener('change', e => {
+    state.calTurmaFilter = e.target.value;
+    render();
+  });
+
   document.querySelectorAll('[data-cal-day]').forEach(el => {
     el.addEventListener('click', () => {
       const delta = parseInt(el.dataset.calDay);
@@ -3703,9 +3708,12 @@ function buildCalendarioPage() {
         </div>
 
         <!-- Turma filter -->
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          <div class="inner-tab ${state.calTurmaFilter==='todas'?'active':''}" data-cal-turma-filter="todas" style="font-size:11px;padding:3px 10px;cursor:pointer">Todas</div>
-          ${turmaOptions.map(t=>`<div class="inner-tab ${state.calTurmaFilter===t.id?'active':''}" data-cal-turma-filter="${t.id}" style="font-size:11px;padding:3px 10px;cursor:pointer">${t.nome}</div>`).join('')}
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--t4)">Turma:</span>
+          <select id="cal-turma-filter" class="inp" style="padding:4px 8px;font-size:12px;width:auto">
+            <option value="todas" ${state.calTurmaFilter==='todas'?'selected':''}>Todas</option>
+            ${turmaOptions.map(t=>`<option value="${t.id}" ${state.calTurmaFilter===t.id?'selected':''}>${t.nome}</option>`).join('')}
+          </select>
         </div>
       </div>
 
