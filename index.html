@@ -944,7 +944,7 @@ function buildApp() {
     </div>`;
   if (!state.user) return buildLoginPage();
 
-  const setupPopup = state.showSetupPopup ? `
+  const setupPopup = false ? `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center">
       <div style="background:var(--bg-t);border:1px solid var(--border2);border-radius:var(--r2);padding:28px;width:360px;position:relative">
         <button id="btn-close-setup-popup" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--t4);font-size:20px;cursor:pointer;line-height:1">×</button>
