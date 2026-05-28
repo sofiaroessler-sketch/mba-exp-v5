@@ -928,12 +928,37 @@ function buildApp() {
       </div>
     </div>`;
   if (!state.user) return buildLoginPage();
+
+  const setupPopup = state.showSetupPopup ? `
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center">
+      <div style="background:var(--bg-t);border:1px solid var(--border2);border-radius:var(--r2);padding:28px;width:360px;position:relative">
+        <button id="btn-close-setup-popup" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--t4);font-size:20px;cursor:pointer;line-height:1">×</button>
+        <div style="font-family:var(--fh);font-weight:700;font-size:16px;color:var(--t1);margin-bottom:6px">🔐 Defina sua senha de acesso</div>
+        <div style="font-size:13px;color:var(--t4);margin-bottom:18px">Na próxima vez que entrar, você usará email e senha.</div>
+        <div style="margin-bottom:12px">
+          <label class="lbl">Email</label>
+          <input class="inp" id="popup-email" type="email" placeholder="seu@email.com" style="width:100%;margin-top:4px">
+        </div>
+        <div style="margin-bottom:12px">
+          <label class="lbl">Senha</label>
+          <input class="inp" id="popup-pass" type="password" placeholder="Mínimo 6 caracteres" style="width:100%;margin-top:4px">
+        </div>
+        <div style="margin-bottom:18px">
+          <label class="lbl">Confirmar senha</label>
+          <input class="inp" id="popup-pass2" type="password" placeholder="Repita a senha" style="width:100%;margin-top:4px">
+        </div>
+        <div id="popup-err" style="color:var(--red-t);font-size:12px;margin-bottom:10px;display:none"></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" id="btn-popup-save">Salvar senha</button>
+      </div>
+    </div>` : '';
+
   return `
     <div id="sidebar">${buildSidebar()}</div>
     <div id="main">${buildMain()}</div>
     ${state.modal ? buildModal() : ''}
     ${state.selAluno ? buildDetailPanel() : ''}
     ${state.toast ? `<div class="toast ${state.toast.type}">${state.toast.msg}</div>` : ''}
+    ${setupPopup}
   `;
 }
 
@@ -2450,13 +2475,19 @@ function attachEvents() {
       const p = state.profiles.find(x=>x.id===pid) || {id:pid, name:pid};
       state.setupProfile = pid;
       if (p.email) {
-        // Já tem email — vai para tela de login
+        // Já tem email — vai para tela de login com senha
         state.loginMode = 'signin';
+        render();
       } else {
-        // Primeiro acesso — vai para tela de setup
-        state.loginMode = 'setup';
+        // Primeiro acesso — entra direto e mostra popup para definir senha
+        state.user = p;
+        state.loginMode = null;
+        state.setupProfile = null;
+        state.showSetupPopup = true;
+        await loadStateFromDb();
+        logAccess('login');
+        render();
       }
-      render();
     });
   });
 
@@ -2526,6 +2557,36 @@ function attachEvents() {
   });
   document.getElementById('btn-signin-back')?.addEventListener('click', () => {
     state.loginMode = null; state.setupProfile = null; render();
+  });
+
+  // Setup popup
+  document.getElementById('btn-close-setup-popup')?.addEventListener('click', () => {
+    state.showSetupPopup = false; render();
+  });
+  document.getElementById('btn-popup-save')?.addEventListener('click', async () => {
+    const email = document.getElementById('popup-email')?.value.trim();
+    const pass  = document.getElementById('popup-pass')?.value;
+    const pass2 = document.getElementById('popup-pass2')?.value;
+    const err   = document.getElementById('popup-err');
+    if (!email || !pass) { err.textContent = 'Preencha email e senha.'; err.style.display='block'; return; }
+    if (pass !== pass2)  { err.textContent = 'As senhas não coincidem.'; err.style.display='block'; return; }
+    if (pass.length < 6) { err.textContent = 'Senha deve ter ao menos 6 caracteres.'; err.style.display='block'; return; }
+    err.style.display = 'none';
+    document.getElementById('btn-popup-save').textContent = 'Salvando...';
+    try {
+      await sbRequest('/auth/v1/signup', 'POST', { email, password: pass });
+      await sbSignIn(email, pass);
+      const p = state.profiles.find(x=>x.id===state.user?.id);
+      if (p) p.email = email;
+      state.showSetupPopup = false;
+      await saveStateToDb();
+      showToast('Senha definida com sucesso!', 'ok');
+      render();
+    } catch(e) {
+      err.textContent = 'Erro: ' + e.message;
+      err.style.display = 'block';
+      document.getElementById('btn-popup-save').textContent = 'Salvar senha';
+    }
   });
 
   // Admin bypass
