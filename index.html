@@ -627,6 +627,14 @@ function isConsult() { return CONSULTORES.includes(state.user?.id); }
 function canSeeAll() { return isGod(); } // turmas/medicos full access
 const RESPONSAVEIS = ['Otávio','Emura','Amyr','Simone','Isabella']; // todos os consultores
 
+function getResponsaveisOpts(selected='') {
+  const nomes = [...new Set([
+    ...RESPONSAVEIS,
+    ...state.profiles.filter(p=>p.id!=='admin').map(p=>p.name)
+  ])].sort();
+  return nomes.map(r=>`<option value="${r}" ${selected===r?'selected':''}>${r}</option>`).join('');
+}
+
 // Turma color palette — cycles through if more than 10 turmas
 const TURMA_COLORS = [
   {bg:'#6366f1',text:'#fff'},  // indigo
@@ -933,6 +941,65 @@ function buildApp() {
 // LOGIN PAGE
 // ═══════════════════════════════════════════════════════
 function buildLoginPage() {
+  const loginMode = state.loginMode || 'choose'; // 'choose' | 'setup' | 'signin'
+  const setupProfile = state.setupProfile || null;
+
+  if (loginMode === 'setup') {
+    // First time: set email and password
+    const p = state.profiles.find(x => x.id === setupProfile);
+    return `
+    <div id="login-page">
+      <div class="login-card">
+        <div class="login-logo">
+          <div class="login-logo-mark">${I.logo}</div>
+          <div class="login-title">Exponencial MBA</div>
+          <div class="login-sub">Configurar acesso — ${p?.name || ''}</div>
+        </div>
+        <div style="margin-bottom:14px">
+          <label class="lbl">Email</label>
+          <input class="inp" id="setup-email" type="email" placeholder="seu@email.com" style="width:100%;margin-top:4px">
+        </div>
+        <div style="margin-bottom:14px">
+          <label class="lbl">Senha</label>
+          <input class="inp" id="setup-pass" type="password" placeholder="Mínimo 6 caracteres" style="width:100%;margin-top:4px">
+        </div>
+        <div style="margin-bottom:20px">
+          <label class="lbl">Confirmar senha</label>
+          <input class="inp" id="setup-pass2" type="password" placeholder="Repita a senha" style="width:100%;margin-top:4px">
+        </div>
+        <div id="setup-err" style="color:var(--red-t);font-size:12.5px;margin-bottom:12px;display:none"></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" id="btn-setup-save">Criar acesso</button>
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" id="btn-setup-back">Voltar</button>
+      </div>
+    </div>`;
+  }
+
+  if (loginMode === 'signin') {
+    const p = state.profiles.find(x => x.id === setupProfile);
+    return `
+    <div id="login-page">
+      <div class="login-card">
+        <div class="login-logo">
+          <div class="login-logo-mark">${I.logo}</div>
+          <div class="login-title">Exponencial MBA</div>
+          <div class="login-sub">${p?.name || 'Entrar'}</div>
+        </div>
+        <div style="margin-bottom:14px">
+          <label class="lbl">Email</label>
+          <input class="inp" id="signin-email" type="email" placeholder="seu@email.com" style="width:100%;margin-top:4px" value="${p?.email||''}">
+        </div>
+        <div style="margin-bottom:20px">
+          <label class="lbl">Senha</label>
+          <input class="inp" id="signin-pass" type="password" placeholder="Sua senha" style="width:100%;margin-top:4px">
+        </div>
+        <div id="signin-err" style="color:var(--red-t);font-size:12.5px;margin-bottom:12px;display:none"></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" id="btn-signin">Entrar</button>
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" id="btn-signin-back">Voltar</button>
+      </div>
+    </div>`;
+  }
+
+  // Default: choose profile
   return `
   <div id="login-page">
     <div class="login-card">
@@ -1877,7 +1944,7 @@ function buildDetailInfo(a) {
         <div class="field"><label class="lbl">Responsável</label>
           <select class="inp" id="ef-resp">
             <option value="">—</option>
-            ${RESPONSAVEIS.map(r=>`<option value="${r}" ${(ef.responsavel||a.responsavel)===r?'selected':''}>${r}</option>`).join('')}
+            ${getResponsaveisOpts(ef.responsavel||a.responsavel)}
           </select>
         </div>
         <div class="field"><label class="lbl">Cidade</label><input class="inp" id="ef-cidade" value="${ef.cidade||a.cidade||''}"></div>
@@ -2143,7 +2210,7 @@ function autoFillTurmaFim(inicio) {
 }
 
 function buildModalNovoMedico() {
-  const respOpts = RESPONSAVEIS.map(r=>`<option value="${r}">${r}</option>`).join('');
+  const respOpts = getResponsaveisOpts();
   return mWrap('Novo Médico', `
     <div class="field-row">
       <div class="field full"><label class="lbl">Nome completo *</label><input class="inp" id="m-nome" placeholder="Dr. Nome Sobrenome"></div>
@@ -2237,7 +2304,7 @@ function buildModalNovaReuniao() {
 function buildModalMarcarAula() {
   const isFromCal = !state.selTurma; // opened from calendar, no turma pre-selected
   const t = state.turmas.find(x=>x.id===state.selTurma);
-  const resp = RESPONSAVEIS.map(r=>`<option value="${r}">${r}</option>`).join('');
+  const resp = getResponsaveisOpts();
   const allResp = state.profiles.map(p=>`<option value="${p.name}">${p.name}</option>`).join('');
   const aulaOpts = AULAS_DEF.map(ad=>`<option value="${ad.id}">${ad.label}</option>`).join('');
   const turmaOpts = state.turmas.map(t=>`<option value="${t.id}">${t.nome}</option>`).join('');
@@ -2381,11 +2448,84 @@ function attachEvents() {
     el.addEventListener('click', async () => {
       const pid = el.dataset.login;
       const p = state.profiles.find(x=>x.id===pid) || {id:pid, name:pid};
+      state.setupProfile = pid;
+      if (p.email) {
+        // Já tem email — vai para tela de login
+        state.loginMode = 'signin';
+      } else {
+        // Primeiro acesso — vai para tela de setup
+        state.loginMode = 'setup';
+      }
+      render();
+    });
+  });
+
+  // Setup: criar email+senha
+  document.getElementById('btn-setup-save')?.addEventListener('click', async () => {
+    const email = document.getElementById('setup-email')?.value.trim();
+    const pass  = document.getElementById('setup-pass')?.value;
+    const pass2 = document.getElementById('setup-pass2')?.value;
+    const err   = document.getElementById('setup-err');
+    if (!email || !pass) { err.textContent = 'Preencha email e senha.'; err.style.display='block'; return; }
+    if (pass !== pass2)  { err.textContent = 'As senhas não coincidem.'; err.style.display='block'; return; }
+    if (pass.length < 6) { err.textContent = 'Senha deve ter ao menos 6 caracteres.'; err.style.display='block'; return; }
+    err.style.display = 'none';
+    document.getElementById('btn-setup-save').textContent = 'Criando...';
+    try {
+      // Cria usuário no Supabase Auth
+      await sbRequest('/auth/v1/signup', 'POST', { email, password: pass });
+      // Faz login
+      await sbSignIn(email, pass);
+      // Salva email no perfil
+      const pid = state.setupProfile;
+      const p = state.profiles.find(x=>x.id===pid);
+      if (p) p.email = email;
+      // Loga no app
+      state.user = p || { id: pid, name: pid };
+      state.loginMode = null;
+      state.setupProfile = null;
+      await loadStateFromDb();
+      await saveStateToDb();
+      logAccess('login');
+      render();
+    } catch(e) {
+      err.textContent = 'Erro: ' + e.message;
+      err.style.display = 'block';
+      document.getElementById('btn-setup-save').textContent = 'Criar acesso';
+    }
+  });
+
+  // Signin: entrar com email+senha
+  document.getElementById('btn-signin')?.addEventListener('click', async () => {
+    const email = document.getElementById('signin-email')?.value.trim();
+    const pass  = document.getElementById('signin-pass')?.value;
+    const err   = document.getElementById('signin-err');
+    if (!email || !pass) { err.textContent = 'Preencha email e senha.'; err.style.display='block'; return; }
+    err.style.display = 'none';
+    document.getElementById('btn-signin').textContent = 'Entrando...';
+    try {
+      await sbSignIn(email, pass);
+      const pid = state.setupProfile;
+      const p = state.profiles.find(x=>x.id===pid) || { id: pid, name: pid };
       state.user = p;
+      state.loginMode = null;
+      state.setupProfile = null;
       await loadStateFromDb();
       logAccess('login');
       render();
-    });
+    } catch(e) {
+      err.textContent = 'Email ou senha incorretos.';
+      err.style.display = 'block';
+      document.getElementById('btn-signin').textContent = 'Entrar';
+    }
+  });
+
+  // Voltar para escolha de perfil
+  document.getElementById('btn-setup-back')?.addEventListener('click', () => {
+    state.loginMode = null; state.setupProfile = null; render();
+  });
+  document.getElementById('btn-signin-back')?.addEventListener('click', () => {
+    state.loginMode = null; state.setupProfile = null; render();
   });
 
   // Admin bypass
@@ -4143,7 +4283,6 @@ function buildAdminRelatorio() {
             <div style="display:flex;align-items:center;gap:12px">
               ${topPage ? `<span style="font-size:11px;color:var(--t4)">Mais usa: <b style="color:var(--t2)">${pageLabels[topPage[0]]||topPage[0]}</b></span>` : ''}
               <span style="font-size:13px;font-weight:700;color:var(--brand-h)">${pct}%</span>
-              <span style="font-size:12px;color:var(--t4)">${u.total} acessos</span>
             </div>
           </div>
           <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
@@ -4164,7 +4303,7 @@ function buildAdminRelatorio() {
           <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
             <div style="height:100%;width:${pct}%;background:var(--brand-h);border-radius:3px"></div>
           </div>
-          <span style="font-size:12px;color:var(--t4);width:60px;text-align:right">${cnt} (${pct}%)</span>
+          <span style="font-size:12px;color:var(--t4);width:40px;text-align:right">${pct}%</span>
         </div>`;
       }).join('')}
     </div>
