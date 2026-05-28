@@ -1070,6 +1070,7 @@ function buildSidebar() {
   const u = state.user;
   const minhas = getMinhasTarefas().filter(t=>!t.done).length;
   const novosMedicos = state.alunos.filter(a => a.status==='ativo' && !a.responsavel).length;
+  const semSenha = isYgor() ? state.profiles.filter(p => p.id !== 'admin' && !p.hasPassword).length : 0;
   const isAdminOnly = u.id === 'admin';
   const nav = isAdminOnly ? [
     {id:'admin', label:'Admin', icon:I.adminIcon},
@@ -1078,7 +1079,7 @@ function buildSidebar() {
     {id:'tarefas',   label:'Tarefas',   icon:I.tasks, badge: minhas > 0 ? minhas : 0},
     {id:'medicos',   label:'Médicos',   icon:I.medicos, badge: (isYgor()||isBruna()) && novosMedicos > 0 ? novosMedicos : 0, badgeColor:'amber'},
     {id:'calendario',label:'Calendário',icon:I.calendar},
-    ...(isYgor()  ? [{id:'admin',         label:'Admin',                  icon:I.adminIcon}] : []),
+    ...(isYgor()  ? [{id:'admin', label:'Admin', icon:I.adminIcon, badge: semSenha > 0 ? semSenha : 0, badgeColor:'amber'}] : []),
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
     {id:'minhas-reunioes', label:'Minhas Reuniões', icon:I.cal},
     {id:'kanban', label:'Situação das Turmas', icon:I.kanban},
@@ -1101,6 +1102,11 @@ function buildSidebar() {
     <div style="margin:0 12px;padding:10px 12px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2);cursor:pointer" data-nav="medicos" data-set-filtro="novos">
       <div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:3px">🔔 ${novosMedicos} novo${novosMedicos>1?'s':''} médico${novosMedicos>1?'s':''}</div>
       <div style="font-size:11px;color:var(--t4)">Aguardando designação de responsável</div>
+    </div>` : ''}
+    ${isYgor() && semSenha > 0 ? `
+    <div style="margin:0 12px;padding:10px 12px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2);cursor:pointer" data-nav="admin" data-admin-tab="perfis">
+      <div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:3px">🔑 ${semSenha} usuário${semSenha>1?'s':''} sem senha</div>
+      <div style="font-size:11px;color:var(--t4)">Definir em Perfis & Usuários</div>
     </div>` : ''}
     <div class="sb-foot" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px">
       <div style="display:flex;align-items:center;gap:8px">
@@ -2689,6 +2695,7 @@ function attachEvents() {
       state.selTurma = null;
       state.selAluno = null;
       if (el.dataset.setFiltro) state.filtroMedicos = el.dataset.setFiltro;
+      if (el.dataset.adminTab) state.adminTab = el.dataset.adminTab;
       logAccess(el.dataset.nav);
       render();
     });
@@ -2759,8 +2766,8 @@ function attachEvents() {
         render();
       }
       if (a === 'salvar-realizar')     salvarRealizar();
-      if (a === 'salvar-edit-profile') salvarEditProfile(el);
-      if (a === 'salvar-novo-usuario') salvarNovoUsuario();
+      if (a === 'salvar-edit-profile') await salvarEditProfile(el);
+      if (a === 'salvar-novo-usuario') await salvarNovoUsuario();
       if (a === 'salvar-edit-turma')   salvarEditTurma(el);
       if (a === 'novo-usuario')          { state.modal={type:'novo-usuario'}; render(); }
       if (a === 'apagar-todas-turmas')   {
@@ -4411,15 +4418,18 @@ function buildAdminRelatorio() {
 
 
 function buildModalEditProfile(p) {
-  const ROLES = ['consultor','cs','admin'];
   return `
   <div class="overlay" id="modal-overlay">
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-hdr"><div class="modal-title">Editar Usuário</div><button class="btn-icon" data-close-modal>${I.x}</button></div>
       <div class="modal-body-scroll">
         <div class="field"><label class="lbl">Nome</label><input class="inp" id="ep-nome" value="${p.name}"></div>
-        <div class="field"><label class="lbl">Email</label><input class="inp" id="ep-email" value="${p.email}"></div>
-
+        <div class="field"><label class="lbl">Email</label><input class="inp" type="email" id="ep-email" value="${p.email||''}"></div>
+        <div class="field">
+          <label class="lbl">Senha ${p.hasPassword ? '(deixe em branco para manter)' : '(opcional — define acesso com senha)'}</label>
+          <input class="inp" type="password" id="ep-senha" placeholder="Mínimo 6 caracteres">
+        </div>
+        ${p.hasPassword ? '<div style="font-size:12px;color:var(--green-t);margin-top:4px">✓ Usuário já tem senha definida</div>' : '<div style="font-size:12px;color:var(--amber-t);margin-top:4px">⚠ Sem senha — entra só clicando no nome</div>'}
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close-modal>Cancelar</button>
@@ -4437,6 +4447,7 @@ function buildModalNovoUsuario() {
       <div class="modal-body">
         <div class="field"><label class="lbl">Nome *</label><input class="inp" id="nu-nome" placeholder="Nome completo"></div>
         <div class="field"><label class="lbl">Email</label><input class="inp" type="email" id="nu-email" placeholder="nome@email.com.br"></div>
+        <div class="field"><label class="lbl">Senha <span style="color:var(--t4);font-size:11px">(opcional)</span></label><input class="inp" type="password" id="nu-senha" placeholder="Mínimo 6 caracteres"></div>
         <div class="field">
           <label class="lbl">Perfil / Papel</label>
           <select class="inp" id="nu-role">
@@ -4476,30 +4487,57 @@ function buildModalEditTurma(t) {
 }
 
 
-function salvarEditProfile(el) {
+async function salvarEditProfile(el) {
   const pid = el.dataset.profileId;
   const p = state.profiles.find(x=>x.id===pid);
   if (!p) return;
   p.name  = document.getElementById('ep-nome')?.value.trim()  || p.name;
   p.email = document.getElementById('ep-email')?.value.trim() || p.email;
-  // also update PROFILES array used in switcher
+  const senha = document.getElementById('ep-senha')?.value;
   const pp = PROFILES.find(x=>x.id===pid);
   if (pp) { pp.name = p.name; pp.email = p.email; }
+
+  if (senha && senha.length >= 6 && p.email) {
+    try {
+      await sbRequest('/auth/v1/signup', 'POST', { email: p.email, password: senha });
+      p.hasPassword = true;
+      if (pp) pp.hasPassword = true;
+      showToast(`Senha definida para ${p.name}`, 'ok');
+    } catch(e) {
+      if (e.message?.includes('already registered')) {
+        showToast(`Email já cadastrado — senha não alterada`, 'err');
+      } else {
+        showToast('Erro ao definir senha: ' + e.message, 'err');
+      }
+    }
+  }
+
   state.modal = null;
   scheduleSave();
-  showToast('Usuário atualizado');
+  if (!senha) showToast('Usuário atualizado');
+  render();
 }
 
-function salvarNovoUsuario() {
+async function salvarNovoUsuario() {
   const nome  = document.getElementById('nu-nome')?.value.trim();
   const email = document.getElementById('nu-email')?.value.trim();
+  const senha = document.getElementById('nu-senha')?.value;
   const role  = document.getElementById('nu-role')?.value || 'consultor';
   if (!nome) return showToast('Nome é obrigatório', 'err');
   const id = nome.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'') + '_' + Date.now().toString().slice(-4);
-  const novoPerfil = {id, name:nome, email: email||'', role};
+  const novoPerfil = {id, name:nome, email: email||'', role, hasPassword: false};
+
+  if (senha && senha.length >= 6 && email) {
+    try {
+      await sbRequest('/auth/v1/signup', 'POST', { email, password: senha });
+      novoPerfil.hasPassword = true;
+    } catch(e) {
+      showToast('Erro ao criar senha: ' + e.message, 'err');
+    }
+  }
+
   state.profiles.push(novoPerfil);
-  // Também adiciona ao PROFILES global para aparecer na tela de login
-  if (!PROFILES.find(p=>p.id===id)) PROFILES.push({id, name:nome, email: email||''});
+  if (!PROFILES.find(p=>p.id===id)) PROFILES.push({id, name:nome, email: email||'', hasPassword: novoPerfil.hasPassword});
   if (role === 'consultor' && !RESPONSAVEIS.includes(nome)) RESPONSAVEIS.push(nome);
   state.modal = null;
   scheduleSave();
