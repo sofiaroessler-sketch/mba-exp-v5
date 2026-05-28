@@ -709,6 +709,20 @@ const AULAS_DEF = [
 
 const REUNIAO_TIPOS = ['Onboarding','Reunião Individual','1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Reunião de Planilhas','Fora do Escopo','Outros'];
 
+const ESPECIALIDADES = [
+  'Acupuntura','Alergia e Imunologia','Anestesiologia','Angiologia','Cardiologia',
+  'Cirurgia Cardiovascular','Cirurgia da Mão','Cirurgia de Cabeça e Pescoço',
+  'Cirurgia do Aparelho Digestivo','Cirurgia Geral','Cirurgia Pediátrica',
+  'Cirurgia Plástica','Cirurgia Torácica','Cirurgia Vascular','Clínica Médica',
+  'Coloproctologia','Dermatologia','Endocrinologia','Endoscopia','Gastroenterologia',
+  'Geriatria','Ginecologia e Obstetrícia','Hematologia','Infectologia','Mastologia',
+  'Medicina de Emergência','Medicina de Família','Medicina do Esporte','Medicina do Trabalho',
+  'Medicina Física e Reabilitação','Medicina Intensiva','Nefrologia','Neurocirurgia',
+  'Neurologia','Nutrologia','Oftalmologia','Oncologia','Ortopedia e Traumatologia',
+  'Otorrinolaringologia','Pediatria','Pneumologia','Psiquiatria','Radiologia',
+  'Reumatologia','Urologia','Outro'
+];
+
 let state = {
   user: null,
   loginMode: null,  // 'change-password' after invite
@@ -722,6 +736,8 @@ let state = {
   selAluno: null,       // aluno ID in detail panel
   alunoTab: 'info',
   filtroMedicos: 'todos',
+  filtroEspecialidade: 'todas',
+  filtroTurma: 'todas',
   searchMedicos: '',
   modal: null,          // {type, data}
   toast: null,
@@ -1776,6 +1792,14 @@ function buildMedicosPage() {
     lista = lista.filter(a => a.status==='ativo' && !a.responsavel);
   }
 
+  if (state.filtroEspecialidade && state.filtroEspecialidade !== 'todas') {
+    lista = lista.filter(a => (a.especialidade||'').trim().toLowerCase() === state.filtroEspecialidade.trim().toLowerCase());
+  }
+
+  if (state.filtroTurma && state.filtroTurma !== 'todas') {
+    lista = lista.filter(a => a.turma === state.filtroTurma);
+  }
+
   // Search applies to all tabs
   if (state.searchMedicos) {
     const q = state.searchMedicos.toLowerCase();
@@ -1814,6 +1838,14 @@ function buildMedicosPage() {
       <div class="inner-tabs" style="margin:0">
         ${filtros.map(f=>`<div class="inner-tab ${state.filtroMedicos===f.id?'active':''}" data-filtro="${f.id}">${f.label}</div>`).join('')}
       </div>
+      <select class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="state.filtroEspecialidade=this.value;render()">
+        <option value="todas" ${(state.filtroEspecialidade||'todas')==='todas'?'selected':''}>Todas especialidades</option>
+        ${ESPECIALIDADES.map(s=>`<option value="${s}" ${state.filtroEspecialidade===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="state.filtroTurma=this.value;render()">
+        <option value="todas" ${(state.filtroTurma||'todas')==='todas'?'selected':''}>Todas as turmas</option>
+        ${state.turmas.map(t=>`<option value="${t.id}" ${state.filtroTurma===t.id?'selected':''}>${t.nome}</option>`).join('')}
+      </select>
       <div style="margin-left:auto;position:relative">
         <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
         <input class="inp" id="search-medicos" placeholder="Buscar..." value="${state.searchMedicos}" style="padding-left:32px;width:200px;padding-top:7px;padding-bottom:7px">
