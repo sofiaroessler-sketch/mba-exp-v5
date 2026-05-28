@@ -2722,7 +2722,7 @@ function attachEvents() {
 
   // Actions
   document.querySelectorAll('[data-action]').forEach(el => {
-    el.addEventListener('click', e => {
+    el.addEventListener('click', async e => {
       const a = el.dataset.action;
       if (a === 'nova-turma') { state.modal = {type:'nova-turma'}; render(); }
       if (a === 'importar-planilha-turmas') { state.modal={type:'importar-planilha-turmas'}; render(); }
