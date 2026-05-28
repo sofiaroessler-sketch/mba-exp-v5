@@ -472,10 +472,9 @@ async function loadStateFromDb() {
       if (d.accessStats)    state.accessStats   = d.accessStats;
       if (d.profiles) {
         state.profiles = d.profiles;
-        // Sync PROFILES global so login screen shows all users
         d.profiles.forEach(p => {
-          if (!PROFILES.find(x=>x.id===p.id)) PROFILES.push({id:p.id, name:p.name, email:p.email||''});
-          else { const pp=PROFILES.find(x=>x.id===p.id); pp.name=p.name; pp.email=p.email||''; }
+          if (!PROFILES.find(x=>x.id===p.id)) PROFILES.push({id:p.id, name:p.name, email:p.email||'', hasPassword:p.hasPassword||false});
+          else { const pp=PROFILES.find(x=>x.id===p.id); pp.name=p.name; pp.email=p.email||''; pp.hasPassword=p.hasPassword||false; }
         });
       }
       if (d.reunioes)       state.reunioes     = d.reunioes;
@@ -4485,7 +4484,7 @@ function salvarEditProfile(el) {
   p.email = document.getElementById('ep-email')?.value.trim() || p.email;
   // also update PROFILES array used in switcher
   const pp = PROFILES.find(x=>x.id===pid);
-  if (pp) pp.name = p.name;
+  if (pp) { pp.name = p.name; pp.email = p.email; }
   state.modal = null;
   scheduleSave();
   showToast('Usuário atualizado');
@@ -5526,23 +5525,22 @@ async function init() {
     const rows = await dbSelect('mba_exp_presenca_state', 'id=eq.main&select=data');
     if (rows && rows[0]?.data?.profiles) {
       const dbProfiles = rows[0].data.profiles;
-      // Merge com PROFILES hardcoded — novos do banco que não existem no código
       dbProfiles.forEach(p => {
         if (!state.profiles.find(x=>x.id===p.id)) {
           state.profiles.push(p);
         } else {
-          // Atualiza nome/email se mudou
           const existing = state.profiles.find(x=>x.id===p.id);
-          existing.name  = p.name;
-          existing.email = p.email||'';
+          existing.name       = p.name;
+          existing.email      = p.email||'';
+          existing.hasPassword = p.hasPassword||false;
         }
-        // Sync PROFILES global (usado na tela de login)
         if (!PROFILES.find(x=>x.id===p.id)) {
-          PROFILES.push({id:p.id, name:p.name, email:p.email||''});
+          PROFILES.push({id:p.id, name:p.name, email:p.email||'', hasPassword:p.hasPassword||false});
         } else {
           const pp = PROFILES.find(x=>x.id===p.id);
-          pp.name  = p.name;
-          pp.email = p.email||'';
+          pp.name       = p.name;
+          pp.email      = p.email||'';
+          pp.hasPassword = p.hasPassword||false;
         }
       });
     }
