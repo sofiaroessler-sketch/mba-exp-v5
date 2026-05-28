@@ -1094,7 +1094,7 @@ function buildSidebar() {
         <button class="sb-out" data-logout title="Sair">${I.logout}</button>
       </div>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
-        ${I.switchIcon} Trocar perfil
+        ${I.logout} Sair
       </button>
 
     </div>
@@ -2609,8 +2609,14 @@ function attachEvents() {
 
   // Switch profile button → open modal
   // Switch profile
-  document.querySelector('[data-switch-profile]')?.addEventListener('click', () => {
-    state.modal = {type:'switch-profile'};
+  document.querySelector('[data-switch-profile]')?.addEventListener('click', async () => {
+    await sbSignOut();
+    state.user = null;
+    state.loginMode = null;
+    state.setupProfile = null;
+    state.showSetupPopup = false;
+    render();
+  });
     render();
   });
 
