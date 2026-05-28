@@ -2473,13 +2473,13 @@ function attachEvents() {
     el.addEventListener('click', async () => {
       const pid = el.dataset.login;
       const p = state.profiles.find(x=>x.id===pid) || {id:pid, name:pid};
-      if (p.email) {
-        // Tem email — pede senha
+      if (p.hasPassword) {
+        // Já definiu senha — pede email e senha
         state.setupProfile = pid;
         state.loginMode = 'signin';
         render();
       } else {
-        // Sem email — entra direto e mostra popup
+        // Sem senha definida — entra direto e mostra popup
         state.user = p;
         state.loginMode = null;
         state.setupProfile = null;
@@ -2577,7 +2577,7 @@ function attachEvents() {
       await sbRequest('/auth/v1/signup', 'POST', { email, password: pass });
       await sbSignIn(email, pass);
       const p = state.profiles.find(x=>x.id===state.user?.id);
-      if (p) p.email = email;
+      if (p) { p.email = email; p.hasPassword = true; }
       state.showSetupPopup = false;
       await saveStateToDb();
       showToast('Senha definida com sucesso!', 'ok');
