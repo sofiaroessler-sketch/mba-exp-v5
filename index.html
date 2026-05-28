@@ -231,8 +231,8 @@ textarea.inp{resize:vertical;min-height:80px;line-height:1.6}
 // ═══════════════════════════════════════════════════════
 // SUPABASE CONFIG
 // ═══════════════════════════════════════════════════════
-const SB_URL  = 'https://zwbpbhxzvjrkoglcjvjb.supabase.co';
-const SB_ANON = 'sb_publishable_PCwlhHS5xF2L8OtvFGn09A_ttOruBci';
+const SB_URL  = 'https://srkgmthbouqnfipkciwc.supabase.co';
+const SB_ANON = 'sb_publishable_YZew_N2oQ_Q3NLrH8Wd-dA_30j7Dsj9';
 
 // ── Supabase Auth helpers ────────────────────────────────
 let sbSession = null; // { access_token, user: { id, email, user_metadata: { name, role } } }
@@ -361,33 +361,8 @@ async function dbDelete(table, match) {
 // Salvamos o estado inteiro como um JSON numa tabela "app_state"
 // com uma única linha { id: 'main', data: {...} }
 let _saveTimer = null;
-let _saveIndicator = null;
-
-function showSaveIndicator(state) {
-  const el = document.getElementById('save-indicator');
-  if (!el) return;
-  if (state === 'saving') {
-    el.textContent = '● Salvando...';
-    el.style.color = 'var(--amber-t)';
-    el.style.opacity = '1';
-  } else if (state === 'saved') {
-    el.textContent = '✓ Salvo';
-    el.style.color = 'var(--green-t)';
-    el.style.opacity = '1';
-    clearTimeout(_saveIndicator);
-    _saveIndicator = setTimeout(() => {
-      el.style.opacity = '0';
-    }, 2000);
-  } else if (state === 'error') {
-    el.textContent = '✗ Erro ao salvar';
-    el.style.color = 'var(--red-t)';
-    el.style.opacity = '1';
-  }
-}
-
 function scheduleSave() {
   clearTimeout(_saveTimer);
-  showSaveIndicator('saving');
   _saveTimer = setTimeout(saveStateToDb, 1500);
 }
 
@@ -411,7 +386,7 @@ async function saveStateToDb(retryCount = 0) {
 
   try {
     // Verifica se alguém salvou depois que carregamos
-    const current = await dbSelect('app_state', 'id=eq.main&select=updated_at');
+    const current = await dbSelect('mba_exp_presenca_state', 'id=eq.main&select=updated_at');
     const remoteTs = current?.[0]?.updated_at;
 
     if (remoteTs && state._loadedAt && remoteTs !== state._loadedAt) {
@@ -423,7 +398,7 @@ async function saveStateToDb(retryCount = 0) {
       console.warn('[supa] conflito detectado, fazendo merge...');
 
       // Carrega estado remoto mais recente
-      const remoteRows = await dbSelect('app_state', 'id=eq.main&select=data');
+      const remoteRows = await dbSelect('mba_exp_presenca_state', 'id=eq.main&select=data');
       const remoteData = remoteRows?.[0]?.data || {};
 
       // Merge: aplica o snapshot local por cima do remoto
@@ -461,27 +436,25 @@ async function saveStateToDb(retryCount = 0) {
       };
 
       state._loadedAt = remoteTs;
-      await dbUpsert('app_state', { id: 'main', data: merged, updated_at: new Date().toISOString() });
+      await dbUpsert('mba_exp_presenca_state', { id: 'main', data: merged, updated_at: new Date().toISOString() });
       state._loadedAt = new Date().toISOString();
       showToast('Dados sincronizados com sucesso', 'ok');
       return;
     }
 
-    await dbUpsert('app_state', { id: 'main', data: snapshot, updated_at: new Date().toISOString() });
+    await dbUpsert('mba_exp_presenca_state', { id: 'main', data: snapshot, updated_at: new Date().toISOString() });
     state._loadedAt = new Date().toISOString();
-    showSaveIndicator('saved');
     console.log('[supa] salvo com sucesso');
 
   } catch(e) {
     console.error('[supa] ERRO ao salvar:', e.message);
-    showSaveIndicator('error');
     showToast('Erro ao salvar: ' + e.message, 'err');
   }
 }
 
 async function loadStateFromDb() {
   try {
-    const rows = await dbSelect('app_state', 'id=eq.main&select=data,updated_at');
+    const rows = await dbSelect('mba_exp_presenca_state', 'id=eq.main&select=data,updated_at');
     if (rows && rows[0]?.data) {
       const d = rows[0].data;
       state._loadedAt = rows[0].updated_at; // guarda timestamp para detecção de conflito
@@ -728,22 +701,6 @@ const AULAS_DEF = [
 
 const REUNIAO_TIPOS = ['Onboarding','Reunião Individual','1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Reunião de Planilhas','Fora do Escopo','Outros'];
 
-const ESPECIALIDADES = [
-  'Acupuntura','Alergia e Imunologia','Anestesiologia','Angiologia','Cardiologia',
-  'Cirurgia Cardiovascular','Cirurgia da Mão','Cirurgia de Cabeça e Pescoço',
-  'Cirurgia do Aparelho Digestivo','Cirurgia Geral','Cirurgia Pediátrica',
-  'Cirurgia Plástica','Cirurgia Torácica','Cirurgia Vascular','Clínica Médica',
-  'Coloproctologia','Dermatologia','Endocrinologia','Endoscopia','Gastroenterologia',
-  'Genética Médica','Geriatria','Ginecologia e Obstetrícia','Hematologia','Hepatologia',
-  'Homeopatia','Infectologia','Mastologia','Medicina de Emergência','Medicina de Família',
-  'Medicina do Esporte','Medicina do Trabalho','Medicina Física e Reabilitação',
-  'Medicina Intensiva','Medicina Legal','Medicina Nuclear','Medicina Preventiva',
-  'Nefrologia','Neurocirurgia','Neurologia','Nutrologia','Oftalmologia','Oncologia',
-  'Ortopedia e Traumatologia','Otorrinolaringologia','Patologia','Pediatria',
-  'Pneumologia','Psiquiatria','Radiologia','Radioterapia','Reumatologia',
-  'Urologia','Outro'
-];
-
 let state = {
   user: null,
   loginMode: null,  // 'change-password' after invite
@@ -757,11 +714,7 @@ let state = {
   selAluno: null,       // aluno ID in detail panel
   alunoTab: 'info',
   filtroMedicos: 'todos',
-  filtroEspecialidade: 'todas',
-  filtroTurma: 'todas',
   searchMedicos: '',
-  searchHistorico: '',
-  selHistoricoAluno: null,
   modal: null,          // {type, data}
   toast: null,
   aulaModal: null,      // {turmaId}
@@ -849,7 +802,7 @@ function isRisco(a) {
   // Só flagear planilha se a turma tiver alguma atividade registrada (evitar falso positivo em turmas novas)
   const pTidChurn = state.presenca[a.turma] || {};
   const temPresenca = Object.keys(pTidChurn).some(aid => (pTidChurn[aid]||{})[a.id]);
-  const semPlanilha = temPresenca && (!a.link_fin || !a.link_leads);
+  const semPlanilha = temPresenca && ((a.planilha_fin_ok===false) || (a.planilha_leads_ok===false));
   return faltas>=maxFaltas || maxC>=maxConsec || maxLink>=maxConsecLink || semPlanilha;
 }
 
@@ -868,8 +821,8 @@ function riscoMotivos(a) {
   let linkC=0,maxLink=0;
   aulaVals.forEach(v=>{if(v==='link'||v==='sim2'){linkC++;maxLink=Math.max(maxLink,linkC);}else linkC=0;});
   if (maxLink>=maxConsecLink) motivos.push(`${maxLink} últimas aulas via link/vídeo (limite: ${maxConsecLink})`);
-  if (!a.link_fin)   motivos.push('Planilha financeira não enviada');
-  if (!a.link_leads) motivos.push('Planilha de leads não enviada');
+  if (a.planilha_fin_ok===false)   motivos.push('Planilha financeira não enviada');
+  if (a.planilha_leads_ok===false) motivos.push('Planilha de leads não enviada');
   return motivos;
 }
 
@@ -919,7 +872,6 @@ const I = {
   userIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
   reportIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-  histIcon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
 };
 
 // ═══════════════════════════════════════════════════════
@@ -1021,7 +973,6 @@ function buildSidebar() {
     {id:'calendario',label:'Calendário',icon:I.calendar},
     ...(isYgor()  ? [{id:'admin',         label:'Admin',                  icon:I.adminIcon}] : []),
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
-    ...(isBruna() ? [{id:'historico', label:'Histórico', icon:I.histIcon}] : []),
     {id:'minhas-reunioes', label:'Minhas Reuniões', icon:I.cal},
     {id:'kanban', label:'Situação das Turmas', icon:I.kanban},
   ];
@@ -1050,7 +1001,6 @@ function buildSidebar() {
         <span class="sb-uname" style="flex:1">${u.name}</span>
         <button class="sb-out" data-logout title="Sair">${I.logout}</button>
       </div>
-      <div id="save-indicator" style="font-size:11px;text-align:center;opacity:0;transition:opacity .3s"></div>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
         ${I.switchIcon} Trocar perfil
       </button>
@@ -1070,7 +1020,6 @@ function buildMain() {
   if (state.page === 'calendario') return buildCalendarioPage();
   if (state.page === 'admin')          return buildAdminPage();
   if (state.page === 'monitoramento')  return buildMonitoramentoPage();
-  if (state.page === 'historico')      return buildHistoricoPage();
   if (state.page === 'minhas-reunioes') return buildMinhasReunioesPage();
   if (state.page === 'kanban')  return buildKanbanPage();
   return '<div class="page"><div class="empty-state">Página não encontrada</div></div>';
@@ -1198,7 +1147,7 @@ function buildTurmaDetail() {
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" data-action="alocar-existente-turma">${I.userIcon} Adicionar existente</button>
         ${isGod() ? `<button class="btn btn-primary btn-sm" data-action="novo-medico-turma">${I.plus} Novo Médico</button>` : ''}
-        <button class="btn btn-ghost btn-sm" data-action="marcar-aula">${I.check} Marcar Aula</button>
+        ${isBruna() || isGod() ? `<button class="btn btn-ghost btn-sm" data-action="marcar-aula">${I.check} Marcar Aula</button>` : ''}
         <button class="btn btn-ghost btn-sm" data-action="editar-turma">${I.edit} Editar</button>
       </div>
     </div>
@@ -1291,7 +1240,7 @@ function buildCronograma(t, alunos) {
   }
 
   // Render aulas — full controls for Bruna/god, read-only for others
-  const canEditPresenca = true; // todos podem marcar presença
+  const canEditPresenca = isBruna() || isGod();
   const aulasHtml = aulasDone.map(({ad, done}, idx) => {
     if (!canEditPresenca) return buildAulaReadOnly(t, alunos, ad);
     if (done && !shouldExpand(idx, ad)) return buildDoneSummary(ad);
@@ -1735,16 +1684,6 @@ function buildMedicosPage() {
     lista = lista.filter(a => a.status==='ativo' && !a.responsavel);
   }
 
-  // Especialidade filter
-  if (state.filtroEspecialidade && state.filtroEspecialidade !== 'todas') {
-    lista = lista.filter(a => (a.especialidade||'').trim().toLowerCase() === state.filtroEspecialidade.trim().toLowerCase());
-  }
-
-  // Turma filter
-  if (state.filtroTurma && state.filtroTurma !== 'todas') {
-    lista = lista.filter(a => a.turma === state.filtroTurma);
-  }
-
   // Search applies to all tabs
   if (state.searchMedicos) {
     const q = state.searchMedicos.toLowerCase();
@@ -1783,14 +1722,6 @@ function buildMedicosPage() {
       <div class="inner-tabs" style="margin:0">
         ${filtros.map(f=>`<div class="inner-tab ${state.filtroMedicos===f.id?'active':''}" data-filtro="${f.id}">${f.label}</div>`).join('')}
       </div>
-      <select id="filtro-especialidade" class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="state.filtroEspecialidade=this.value;render()">
-        <option value="todas" ${(state.filtroEspecialidade||'todas')==='todas'?'selected':''}>Todas especialidades</option>
-        ${ESPECIALIDADES.map(s=>`<option value="${s}" ${state.filtroEspecialidade===s?'selected':''}>${s}</option>`).join('')}
-      </select>
-      <select class="inp" style="padding:4px 8px;font-size:12px;width:auto" onchange="state.filtroTurma=this.value;render()">
-        <option value="todas" ${(state.filtroTurma||'todas')==='todas'?'selected':''}>Todas as turmas</option>
-        ${state.turmas.map(t=>`<option value="${t.id}" ${state.filtroTurma===t.id?'selected':''}>${t.nome}</option>`).join('')}
-      </select>
       <div style="margin-left:auto;position:relative">
         <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
         <input class="inp" id="search-medicos" placeholder="Buscar..." value="${state.searchMedicos}" style="padding-left:32px;width:200px;padding-top:7px;padding-bottom:7px">
@@ -1843,9 +1774,8 @@ function buildMedicoCard(a, clickable=true) {
 function buildDetailPanel() {
   const a = state.alunos.find(x=>x.id===state.selAluno);
   if (!a) return '';
-  const tabs = ['info','etapas','historico','aulas','reunioes','okrs','notas'];
-  const tabLabels = {info:'Informações',etapas:'Etapas Iniciais',historico:'Histórico',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
-  const motivos = isRisco(a) ? riscoMotivos(a) : [];
+  const tabs = ['info','etapas','aulas','reunioes','okrs','notas'];
+  const tabLabels = {info:'Informações',etapas:'Etapas Iniciais',aulas:'Aulas',reunioes:'Reuniões',okrs:'OKRs & KPIs',notas:'Notas'};
   return `
   <div class="detail-panel">
     <div class="detail-hdr">
@@ -1860,7 +1790,6 @@ function buildDetailPanel() {
         </div>
       </div>
       <div style="display:flex;gap:6px">
-        ${isBruna() ? `<button class="btn btn-ghost btn-sm" data-ir-historico="${a.id}">${I.histIcon} Histórico</button>` : ''}
         <button class="btn-icon" data-action="editar-aluno" title="Editar">${I.edit}</button>
         <button class="btn-icon" data-close-panel title="Fechar">${I.x}</button>
       </div>
@@ -1869,10 +1798,8 @@ function buildDetailPanel() {
       ${tabs.map(t=>`<div class="detail-tab ${state.alunoTab===t?'active':''}" data-aluno-tab="${t}">${tabLabels[t]}</div>`).join('')}
     </div>
     <div class="detail-body">
-      ${a.status==='churn' ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(229,62,62,.1);border:1px solid rgba(229,62,62,.3);border-radius:var(--r2);font-size:12.5px;color:var(--red-t)">⚠ Médico em churn</div>` : motivos.length ? `<div style="margin-bottom:14px;padding:10px 14px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2)"><div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">⚠ Em risco de churn</div>${motivos.map(m=>`<div style="font-size:12.5px;color:var(--amber-t);margin-top:3px">· ${m}</div>`).join('')}</div>` : ''}
       ${state.alunoTab==='info' ? buildDetailInfo(a) : ''}
       ${state.alunoTab==='etapas' ? buildDetailEtapas(a) : ''}
-      ${state.alunoTab==='historico' ? buildDetailHistorico(a) : ''}
       ${state.alunoTab==='aulas' ? buildDetailAulas(a) : ''}
       ${state.alunoTab==='reunioes' ? buildDetailReunioes(a) : ''}
       ${state.alunoTab==='okrs'  ? buildDetailOKRs(a)  : ''}
@@ -1931,39 +1858,6 @@ function buildDetailEtapas(a) {
   </div>`;
 }
 
-function buildDetailHistorico(a) {
-  const eventos = buildEventosAluno(a);
-  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  function fmtDate(ts) {
-    if (!ts) return 'Sem data registrada';
-    const d = new Date(ts + 'T12:00');
-    return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-  }
-  const porData = {};
-  eventos.forEach(e => {
-    const key = e.ts || 'sem-data';
-    if (!porData[key]) porData[key] = [];
-    porData[key].push(e);
-  });
-
-  if (eventos.length === 0) return `<div class="empty-state" style="padding:32px 0">${I.histIcon}<p>Nenhum evento registrado ainda</p></div>`;
-
-  return `
-  <div style="position:relative;padding-left:24px">
-    <div style="position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border);border-radius:1px"></div>
-    ${Object.entries(porData).map(([data, evts]) => `
-      <div style="margin-bottom:18px">
-        <div style="font-size:11px;font-weight:600;color:var(--t4);margin-bottom:8px;letter-spacing:.3px">${fmtDate(data === 'sem-data' ? '' : data)}</div>
-        ${evts.map(e => `
-        <div style="position:relative;display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:5px">
-          <div style="position:absolute;left:-20px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:${e.color};border:2px solid var(--bg)"></div>
-          <span style="font-size:14px;flex-shrink:0">${e.icon}</span>
-          <span style="font-size:12.5px;color:var(--t2)">${e.desc}</span>
-        </div>`).join('')}
-      </div>`).join('')}
-  </div>`;
-}
-
 function buildDetailInfo(a) {
   const ed = state.editandoAluno;
   const ef = state.editForm;
@@ -1973,12 +1867,7 @@ function buildDetailInfo(a) {
     <div>
       <div class="field-row">
         <div class="field"><label class="lbl">Nome</label><input class="inp" id="ef-nome" value="${ef.nome||a.nome}"></div>
-        <div class="field"><label class="lbl">Especialidade</label>
-          <select class="inp" id="ef-esp">
-            <option value="">—</option>
-            ${ESPECIALIDADES.map(e=>`<option value="${e}" ${(ef.especialidade||a.especialidade||'')===e?'selected':''}>${e}</option>`).join('')}
-          </select>
-        </div>
+        <div class="field"><label class="lbl">Especialidade</label><input class="inp" id="ef-esp" value="${ef.especialidade||a.especialidade||''}"></div>
         <div class="field"><label class="lbl">Turma</label>
           <select class="inp" id="ef-turma">
             <option value="">—</option>
@@ -2055,23 +1944,19 @@ function buildDetailAulas(a) {
       <div class="section-title" style="margin:0">Histórico de Aulas</div>
       <span class="pill ${taxaCls}">Presença: ${taxa}%</span>
     </div>
-    ${(() => {
-      const todasAulas = AULAS_DEF.filter(ad=>ad.bloco!=='11');
-      const rows = todasAulas.map(ad => {
-        let pres = null;
-        Object.entries(marcadas).forEach(([tid,aulaMap])=>{
-          if (aulaMap[ad.id] && aulaMap[ad.id][a.id]) pres = aulaMap[ad.id][a.id];
-        });
-        if (pres === null) return '';
-        const lbl = pres==='sim'?'Presente':pres==='nao'?'Faltou':pres==='link'?'Link':pres==='reset'?'Reset':'—';
-        const cls = pres==='sim'?'pill-green':pres==='nao'?'pill-red':pres==='link'?'pill-amber':'pill-gray';
-        return `<div class="aula-row">
-          <div style="flex:1;font-size:13px;color:var(--t2)">${ad.label}</div>
-          <span class="pill ${cls}" style="font-size:10.5px">${lbl}</span>
-        </div>`;
-      }).filter(Boolean).join('');
-      return rows || `<div style="font-size:13px;color:var(--t4);padding:8px 0">Nenhuma aula registrada ainda.</div>`;
-    })()}
+    ${AULAS_DEF.filter(ad=>ad.bloco!=='11').map(ad=>{
+      // Find presenca for this aluno in any turma
+      let pres = null;
+      Object.entries(marcadas).forEach(([tid,aulaMap])=>{
+        if (aulaMap[ad.id] && aulaMap[ad.id][a.id]) pres = aulaMap[ad.id][a.id];
+      });
+      const lbl = pres==='sim'?'Presente':pres==='nao'?'Faltou':pres==='link'?'Link':pres==='reset'?'Reset':'Não realizada';
+      const cls = pres==='sim'?'pill-green':pres==='nao'?'pill-red':pres==='link'?'pill-amber':'pill-gray';
+      return `<div class="aula-row">
+        <div style="flex:1;font-size:13px;color:var(--t2)">${ad.label}</div>
+        <span class="pill ${cls}" style="font-size:10.5px">${lbl}</span>
+      </div>`;
+    }).join('')}
     <div class="divider"></div>
     <div class="section-title">1:1s</div>
     ${AULAS_DEF.filter(ad=>ad.bloco==='11').map(ad=>{
@@ -2115,13 +2000,10 @@ function buildDetailReunioes(a) {
             <span style="font-size:11.5px;color:var(--t4);margin-left:10px">${fmt(r.data)}${r.hora?' · '+r.hora:''}</span>
             ${!r.realizada ? `<span class="pill pill-blue" style="font-size:9.5px;margin-left:8px">Agendada</span>` : `<span class="pill pill-green" style="font-size:9.5px;margin-left:8px">Realizada</span>`}
           </div>
-          <div style="display:flex;gap:5px;align-items:center">
-            ${!r.realizada
-              ? `<button class="btn btn-primary btn-sm" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>
-                 <button class="btn btn-ghost btn-sm" data-reagendar="${r.id}" data-aluno-id="${a.id}">Reagendar</button>`
-              : `<button class="btn btn-ghost btn-sm" data-desmarcar="${r.id}" data-aluno-id="${a.id}">Desmarcar</button>`
-            }
-            <button class="btn-icon" style="width:26px;height:26px;border-color:var(--red-b);color:var(--red-t)" onclick="event.stopPropagation();delReuniao('${r.id}','${a.id}')">${I.trash}</button>
+          <div style="display:flex;gap:5px">
+            ${!r.realizada ? `<button class="btn btn-primary btn-xs" data-realizar="${r.id}" data-aluno-id="${a.id}">Realizar</button>` : `<button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-desmarcar="${r.id}" data-aluno-id="${a.id}">Desmarcar</button>`}
+            <button class="btn btn-ghost btn-xs" data-reagendar="${r.id}" data-aluno-id="${a.id}">Reagendar</button>
+            <button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" onclick="event.stopPropagation();delReuniao('${r.id}','${a.id}')">${I.trash}</button>
           </div>
         </div>
         ${r.realizada && r.notas ? `<div style="font-size:12.5px;color:var(--t3);margin:6px 0;line-height:1.6">${r.notas}</div>` : ''}
@@ -2265,12 +2147,7 @@ function buildModalNovoMedico() {
   return mWrap('Novo Médico', `
     <div class="field-row">
       <div class="field full"><label class="lbl">Nome completo *</label><input class="inp" id="m-nome" placeholder="Dr. Nome Sobrenome"></div>
-      <div class="field"><label class="lbl">Especialidade</label>
-        <select class="inp" id="m-esp">
-          <option value="">—</option>
-          ${ESPECIALIDADES.map(e=>`<option value="${e}">${e}</option>`).join('')}
-        </select>
-      </div>
+      <div class="field"><label class="lbl">Especialidade</label><input class="inp" id="m-esp" placeholder="Ex: Cardiologia"></div>
       <div class="field"><label class="lbl">Turma *</label>
         <select class="inp" id="m-turma">
           <option value="">Selecione</option>
@@ -2705,16 +2582,6 @@ function attachEvents() {
   document.getElementById('modal-overlay')?.addEventListener('click', () => { state.modal = null; render(); });
 
   // Close panel
-  document.querySelector('[data-ir-historico]')?.addEventListener('click', el => {
-    const alunoId = el.currentTarget.dataset.irHistorico;
-    const aluno = state.alunos.find(a => a.id === alunoId);
-    state.selAluno = null;
-    state.page = 'historico';
-    state.selHistoricoAluno = alunoId;
-    state.searchHistorico = aluno?.nome || '';
-    render();
-  });
-
   document.querySelector('[data-close-panel]')?.addEventListener('click', () => {
     state.selAluno = null; state.editandoAluno = false; render();
   });
@@ -2854,7 +2721,7 @@ function attachEvents() {
 
   // Filtro médicos
   document.querySelectorAll('[data-filtro]').forEach(el => {
-    el.addEventListener('click', () => { state.filtroMedicos = el.dataset.filtro; state.searchMedicos = ''; render(); });
+    el.addEventListener('click', () => { state.filtroMedicos = el.dataset.filtro; render(); });
   });
 
   // Search médicos
@@ -2868,57 +2735,9 @@ function attachEvents() {
     });
   });
 
-  document.getElementById('filtro-especialidade')?.addEventListener('change', e => {
-    state.filtroEspecialidade = e.target.value;
-    render();
-  });
-
   document.getElementById('search-admin-medicos')?.addEventListener('input', e => {
     state.searchAdminMedicos = e.target.value;
     render();
-  });
-
-  document.getElementById('search-historico')?.addEventListener('input', e => {
-    state.searchHistorico = e.target.value;
-    state.selHistoricoAluno = null;
-    // Atualiza só as sugestões sem re-render completo
-    const q = e.target.value.toLowerCase();
-    const container = document.getElementById('historico-sugestoes');
-    if (!container) return;
-    if (!q) { container.innerHTML = ''; return; }
-    const sugestoes = state.alunos.filter(a => a.status !== 'inativo' && a.nome.toLowerCase().includes(q)).slice(0, 6);
-    if (!sugestoes.length) { container.innerHTML = ''; return; }
-    container.innerHTML = sugestoes.map(a => `
-      <div style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);transition:background .1s" data-sel-historico="${a.id}">
-        <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--brand-h);flex-shrink:0">${ini(a.nome)}</div>
-        <div>
-          <div style="font-size:13.5px;font-weight:500;color:var(--t1)">${a.nome}</div>
-          <div style="font-size:11.5px;color:var(--t4)">${a.turma||'Sem turma'} · ${a.responsavel||'Sem responsável'}</div>
-        </div>
-        <span style="margin-left:auto;font-size:10px;padding:2px 7px;border-radius:99px;background:${a.status==='ativo'?'rgba(5,150,105,.2)':a.status==='churn'?'rgba(229,62,62,.2)':'rgba(217,119,6,.2)'};color:${a.status==='ativo'?'var(--green-t)':a.status==='churn'?'var(--red-t)':'var(--amber-t)'}">${a.status}</span>
-      </div>`).join('');
-    // Re-attach listeners nas sugestões novas
-    container.querySelectorAll('[data-sel-historico]').forEach(el => {
-      el.addEventListener('click', () => {
-        state.selHistoricoAluno = el.dataset.selHistorico;
-        state.searchHistorico = state.alunos.find(a => a.id === el.dataset.selHistorico)?.nome || '';
-        render();
-      });
-    });
-  });
-
-  document.getElementById('clear-historico')?.addEventListener('click', () => {
-    state.searchHistorico = '';
-    state.selHistoricoAluno = null;
-    render();
-  });
-
-  document.querySelectorAll('[data-sel-historico]').forEach(el => {
-    el.addEventListener('click', () => {
-      state.selHistoricoAluno = el.dataset.selHistorico;
-      state.searchHistorico = state.alunos.find(a => a.id === el.dataset.selHistorico)?.nome || '';
-      render();
-    });
   });
 
   // Presença CYCLE: Presente→sim(green)→sim2(yellow)→off
@@ -3813,7 +3632,6 @@ function buildCalendarioPage() {
   if (!state.calYear)  state.calYear  = today.getFullYear();
   if (!state.calMonth) state.calMonth = today.getMonth();
   if (!state.calView)  state.calView  = 'month';
-  if (state.calView === 'day') state.calView = 'month'; // removido
   if (state.calWeek === undefined) state.calWeek = 0;
   if (!state.calTurmaFilter) state.calTurmaFilter = 'todas';
 
@@ -3978,6 +3796,7 @@ function buildCalendarioPage() {
 
         <!-- View toggle -->
         <div class="inner-tabs" style="margin:0">
+          <div class="inner-tab ${view==='day'?'active':''}" data-cal-view="day" style="font-size:12px;padding:4px 12px">Dia</div>
           <div class="inner-tab ${view==='week'?'active':''}" data-cal-view="week" style="font-size:12px;padding:4px 12px">Semana</div>
           <div class="inner-tab ${view==='month'?'active':''}" data-cal-view="month" style="font-size:12px;padding:4px 12px">Mês</div>
         </div>
@@ -3992,14 +3811,14 @@ function buildCalendarioPage() {
         </div>
       </div>
 
-      <!-- Day headers -->
+      <!-- Day headers (not for day view) -->
       ${view !== 'day' ? `
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
         ${dayNames.map(d=>`<div style="font-size:10px;font-weight:600;color:var(--t4);text-align:center;padding:4px 0">${d}</div>`).join('')}
       </div>` : ''}
 
       <!-- Grid -->
-      ${view==='month' ? renderMonth() : view==='week' ? renderWeek() : renderMonth()}
+      ${view==='month' ? renderMonth() : view==='week' ? renderWeek() : renderDay()}
 
       <!-- Upcoming list -->
       ${upcomingAll.length > 0 ? `
@@ -4303,6 +4122,7 @@ function buildAdminRelatorio() {
   <div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <div class="section-title" style="margin:0">Relatório de Uso</div>
+      <span class="pill pill-gray" style="font-size:11px">${totalAcessos} acessos registrados</span>
     </div>
 
     ${userStats.length === 0 ? `<div class="empty-state" style="padding:24px 0"><p>Nenhum acesso registrado ainda</p></div>` : `
@@ -4323,6 +4143,7 @@ function buildAdminRelatorio() {
             <div style="display:flex;align-items:center;gap:12px">
               ${topPage ? `<span style="font-size:11px;color:var(--t4)">Mais usa: <b style="color:var(--t2)">${pageLabels[topPage[0]]||topPage[0]}</b></span>` : ''}
               <span style="font-size:13px;font-weight:700;color:var(--brand-h)">${pct}%</span>
+              <span style="font-size:12px;color:var(--t4)">${u.total} acessos</span>
             </div>
           </div>
           <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
@@ -4343,7 +4164,7 @@ function buildAdminRelatorio() {
           <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
             <div style="height:100%;width:${pct}%;background:var(--brand-h);border-radius:3px"></div>
           </div>
-          <span style="font-size:12px;color:var(--t4);width:60px;text-align:right">${pct}%</span>
+          <span style="font-size:12px;color:var(--t4);width:60px;text-align:right">${cnt} (${pct}%)</span>
         </div>`;
       }).join('')}
     </div>
@@ -5264,184 +5085,6 @@ function buildMinhasReunioesPage() {
   </div>`;
 }
 
-function buildEventosAluno(a) {
-  const eventos = [];
-  const aulasDatesT = state.aulasDates[a.turma] || {};
-  const presencaT   = (state.presenca[a.turma] || {});
-  const etapas      = state.etapas[a.id] || {};
-
-  // Presenças em aulas
-  AULAS_DEF.filter(ad => ad.bloco !== '11').forEach(ad => {
-    const pres = (presencaT[ad.id] || {})[a.id];
-    const data = aulasDatesT[ad.id]?.data || null;
-    if (!pres) return;
-    if (pres === 'sim' || pres === 'sim2') {
-      eventos.push({ ts: data || '', tipo: 'presenca', icon: '✓', color: 'var(--green)', desc: `Presente — ${ad.label}` });
-    } else if (pres === 'nao') {
-      eventos.push({ ts: data || '', tipo: 'falta', icon: '✗', color: 'var(--red-t)', desc: `Faltou — ${ad.label}` });
-    } else if (pres === 'link') {
-      eventos.push({ ts: data || '', tipo: 'link', icon: '🔗', color: 'var(--amber-t)', desc: `Assistiu via link — ${ad.label}` });
-    }
-  });
-
-  // Reuniões
-  (a.reunioes || []).forEach(r => {
-    if (!r.data) return;
-    if (r.realizada) {
-      const resp = r.responsavelId ? (PROFILES.find(p=>p.id===r.responsavelId)?.name || r.responsavelId) : '';
-      eventos.push({ ts: r.data, tipo: 'reuniao_realizada', icon: '📋', color: 'var(--brand-h)', desc: `${r.tipo} realizada${resp ? ' — ' + resp : ''}` });
-    } else {
-      eventos.push({ ts: r.data, tipo: 'reuniao_agendada', icon: '📅', color: 'var(--t4)', desc: `${r.tipo} agendada` });
-    }
-  });
-
-  // Etapas iniciais
-  const etapaLabels = { forms: 'Formulário de Onboarding', onb: 'Reunião de Onboarding', fin: 'Reunião Fin/Leads', sec: 'Treinamento da Secretária' };
-  Object.entries(etapaLabels).forEach(([id, label]) => {
-    if (etapas[id + '_done']) {
-      eventos.push({ ts: '', tipo: 'etapa', icon: '🎯', color: 'var(--green)', desc: `Etapa concluída — ${label}` });
-    }
-  });
-
-  // Status changes não temos timestamp, mas podemos registrar o status atual como evento contextual
-  if (a.status === 'churn') {
-    eventos.push({ ts: '', tipo: 'status', icon: '⚠', color: 'var(--red-t)', desc: 'Status: Churn' });
-  } else if (a.status === 'pausado') {
-    eventos.push({ ts: '', tipo: 'status', icon: '⏸', color: 'var(--amber-t)', desc: 'Status: Pausado' });
-  }
-
-  // Sort: com data primeiro (desc), sem data por último
-  eventos.sort((a, b) => {
-    if (!a.ts && !b.ts) return 0;
-    if (!a.ts) return 1;
-    if (!b.ts) return -1;
-    return b.ts.localeCompare(a.ts);
-  });
-
-  return eventos;
-}
-
-function buildHistoricoPage() {
-  const q = (state.searchHistorico || '').toLowerCase();
-  const todosAlunos = state.alunos.filter(a => a.status !== 'inativo');
-  const sugestoes = q
-    ? todosAlunos.filter(a => a.nome.toLowerCase().includes(q)).slice(0, 6)
-    : [];
-
-  const selAluno = state.selHistoricoAluno
-    ? state.alunos.find(x => x.id === state.selHistoricoAluno)
-    : null;
-
-  const eventos = selAluno ? buildEventosAluno(selAluno) : [];
-
-  // Group events by date
-  const porData = {};
-  eventos.forEach(e => {
-    const key = e.ts || 'sem-data';
-    if (!porData[key]) porData[key] = [];
-    porData[key].push(e);
-  });
-
-  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  function fmtDate(ts) {
-    if (!ts) return 'Sem data registrada';
-    const d = new Date(ts + 'T12:00');
-    return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-  }
-
-  const taxaCls = selAluno ? (selAluno.taxa_presenca>=75?'pill-green':selAluno.taxa_presenca>=50?'pill-amber':'pill-red') : '';
-  const reuTotal = selAluno ? (selAluno.reunioes||[]).filter(r=>r.realizada).length : 0;
-  const faltasTotal = eventos.filter(e=>e.tipo==='falta').length;
-  const etapasTotal = Object.keys(state.etapas[selAluno?.id]||{}).filter(k=>k.endsWith('_done')).length;
-
-  return `
-  <div class="page">
-    <div class="page-hdr">
-      <div>
-        <div class="page-title">Histórico</div>
-        <div class="page-sub">Linha do tempo individual de cada médico</div>
-      </div>
-    </div>
-    <div class="page-body">
-
-      <!-- Busca -->
-      <div style="position:relative;max-width:420px;margin-bottom:${sugestoes.length||selAluno?'8px':'32px'}">
-        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t4);display:flex">${I.search}</span>
-        <input class="inp" id="search-historico" placeholder="Buscar médico..." value="${state.searchHistorico||''}"
-          style="padding-left:34px;font-size:14px;padding-top:10px;padding-bottom:10px" autocomplete="off">
-        ${selAluno ? `<button style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--t4);font-size:18px;line-height:1" id="clear-historico">×</button>` : ''}
-      </div>
-
-      <!-- Sugestões dropdown -->
-      <div id="historico-sugestoes" style="background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);max-width:420px;overflow:hidden;margin-bottom:${sugestoes.length > 0 && !selAluno ? '24px' : '0'}">
-        ${sugestoes.length > 0 && !selAluno ? sugestoes.map(a => `
-        <div style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)" data-sel-historico="${a.id}">
-          <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--brand-h);flex-shrink:0">${ini(a.nome)}</div>
-          <div>
-            <div style="font-size:13.5px;font-weight:500;color:var(--t1)">${a.nome}</div>
-            <div style="font-size:11.5px;color:var(--t4)">${a.turma||'Sem turma'} · ${a.responsavel||'Sem responsável'}</div>
-          </div>
-          <span class="pill ${a.status==='ativo'?'pill-green':a.status==='churn'?'pill-red':'pill-amber'}" style="font-size:10px;margin-left:auto">${a.status}</span>
-        </div>`).join('') : ''}
-      </div>
-
-      <!-- Médico selecionado -->
-      ${selAluno ? `
-
-      <!-- Header do médico -->
-      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:20px">
-        <div style="width:46px;height:46px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--brand-h);flex-shrink:0">${ini(selAluno.nome)}</div>
-        <div style="flex:1">
-          <div style="font-family:var(--fh);font-weight:700;font-size:16px;color:var(--t1)">${selAluno.nome}</div>
-          <div style="font-size:12px;color:var(--t4);margin-top:3px">${selAluno.turma||'Sem turma'} · Resp: ${selAluno.responsavel||'—'}</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
-            <div style="font-size:18px;font-weight:700;color:var(--t1)">${selAluno.taxa_presenca}%</div>
-            <div style="font-size:10px;color:var(--t4);margin-top:2px">Presença</div>
-          </div>
-          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
-            <div style="font-size:18px;font-weight:700;color:var(--t1)">${reuTotal}</div>
-            <div style="font-size:10px;color:var(--t4);margin-top:2px">Reuniões</div>
-          </div>
-          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
-            <div style="font-size:18px;font-weight:700;color:${faltasTotal>0?'var(--red-t)':'var(--t1)'}">${faltasTotal}</div>
-            <div style="font-size:10px;color:var(--t4);margin-top:2px">Faltas</div>
-          </div>
-          <div style="text-align:center;padding:8px 14px;background:var(--bg-t);border-radius:var(--r);min-width:60px">
-            <div style="font-size:18px;font-weight:700;color:var(--t1)">${etapasTotal}/4</div>
-            <div style="font-size:10px;color:var(--t4);margin-top:2px">Etapas</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Timeline -->
-      ${eventos.length === 0 ? `<div class="empty-state" style="padding:32px 0">${I.histIcon}<p>Nenhum evento registrado ainda</p></div>` : `
-      <div style="position:relative;padding-left:24px">
-        <div style="position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--border);border-radius:1px"></div>
-        ${Object.entries(porData).map(([data, evts]) => `
-          <div style="margin-bottom:20px">
-            <div style="font-size:11.5px;font-weight:600;color:var(--t4);margin-bottom:10px;letter-spacing:.3px">${fmtDate(data === 'sem-data' ? '' : data)}</div>
-            ${evts.map(e => `
-            <div style="position:relative;display:flex;align-items:flex-start;gap:12px;padding:10px 14px;background:var(--bg-s);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:6px">
-              <div style="position:absolute;left:-20px;top:50%;transform:translateY(-50%);width:12px;height:12px;border-radius:50%;background:${e.color};border:2px solid var(--bg);flex-shrink:0"></div>
-              <span style="font-size:15px;flex-shrink:0">${e.icon}</span>
-              <span style="font-size:13px;color:var(--t2);line-height:1.4">${e.desc}</span>
-            </div>`).join('')}
-          </div>
-        `).join('')}
-      </div>`}
-
-      ` : !q ? `
-      <div class="empty-state" style="padding:48px 0">
-        ${I.histIcon}
-        <p style="margin-top:12px">Digite o nome de um médico para ver o histórico</p>
-      </div>` : ''}
-
-    </div>
-  </div>`;
-}
-
 function buildMonitoramentoPage() {
   const rc = state.riscoCriteria||{maxFaltas:2, maxConsec:2, maxConsecLink:3};
 
@@ -5642,7 +5285,7 @@ async function init() {
   // Carrega profiles do Supabase antes de renderizar a tela de login
   // para que novos usuários criados apareçam imediatamente
   try {
-    const rows = await dbSelect('app_state', 'id=eq.main&select=data');
+    const rows = await dbSelect('mba_exp_presenca_state', 'id=eq.main&select=data');
     if (rows && rows[0]?.data?.profiles) {
       const dbProfiles = rows[0].data.profiles;
       // Merge com PROFILES hardcoded — novos do banco que não existem no código
