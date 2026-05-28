@@ -745,7 +745,7 @@ let state = {
   profiles: [
     {id:'otavio',  name:'Otávio',  email:'otavio@exponencialmed.com.br'},
     {id:'emura',   name:'Emura',   email:'emura@exponencialmed.com.br'},
-    {id:'ygor',    name:'Ygor',    email:'ygor@exponencialmed.com.br'},
+    {id:'ygor',    name:'Ygor',    email:''},
     {id:'amyr',    name:'Amyr',    email:'amyr@exponencialmed.com.br'},
     {id:'matheus', name:'Matheus', email:'matheus@exponencialmed.com.br'},
     {id:'simone',  name:'Simone',  email:'simone@exponencialmed.com.br'},
@@ -2473,13 +2473,13 @@ function attachEvents() {
     el.addEventListener('click', async () => {
       const pid = el.dataset.login;
       const p = state.profiles.find(x=>x.id===pid) || {id:pid, name:pid};
-      state.setupProfile = pid;
       if (p.email) {
-        // Já tem email — vai para tela de login com senha
+        // Tem email — pede senha
+        state.setupProfile = pid;
         state.loginMode = 'signin';
         render();
       } else {
-        // Primeiro acesso — entra direto e mostra popup para definir senha
+        // Sem email — entra direto e mostra popup
         state.user = p;
         state.loginMode = null;
         state.setupProfile = null;
