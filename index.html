@@ -2538,10 +2538,12 @@ function attachEvents() {
       await sbSignIn(email, pass);
       const pid = state.setupProfile;
       const p = state.profiles.find(x=>x.id===pid) || { id: pid, name: pid };
+      if (p) p.hasPassword = true;
       state.user = p;
       state.loginMode = null;
       state.setupProfile = null;
       await loadStateFromDb();
+      await saveStateToDb();
       logAccess('login');
       render();
     } catch(e) {
@@ -2572,15 +2574,15 @@ function attachEvents() {
     if (pass !== pass2)  { err.textContent = 'As senhas não coincidem.'; err.style.display='block'; return; }
     if (pass.length < 6) { err.textContent = 'Senha deve ter ao menos 6 caracteres.'; err.style.display='block'; return; }
     err.style.display = 'none';
-    document.getElementById('btn-popup-save').textContent = 'Salvando...';
+    document.getElementById('btn-popup-save').textContent = 'Enviando...';
     try {
       await sbRequest('/auth/v1/signup', 'POST', { email, password: pass });
-      await sbSignIn(email, pass);
+      // Salva email no perfil mas hasPassword só fica true após confirmação
       const p = state.profiles.find(x=>x.id===state.user?.id);
-      if (p) { p.email = email; p.hasPassword = true; }
+      if (p) p.email = email;
       state.showSetupPopup = false;
       await saveStateToDb();
-      showToast('Senha definida com sucesso!', 'ok');
+      showToast('✉ Confirme seu email para ativar o acesso com senha!', 'ok');
       render();
     } catch(e) {
       err.textContent = 'Erro: ' + e.message;
