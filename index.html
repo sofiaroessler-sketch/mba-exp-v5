@@ -1759,8 +1759,9 @@ function buildDetailEtapas(a) {
   const canEdit = isGod() || isBruna();
   const etapas = [
     {id:'forms', label:'Formulário de Onboarding', desc:'1 clique: enviado · 2 cliques: médico recebeu/preencheu'},
-    {id:'onb',   label:'Reunião de Onboarding',            desc:'Reunião inicial realizada com o consultor'},
-    {id:'fin',   label:'Reunião Fin/Leads',                desc:'Acesso às planilhas financeira e de leads'},
+    {id:'ind',   label:'Reunião Individual',              desc:'Reunião individual com o médico interno'},
+    {id:'onb',   label:'Reunião de Onboarding',           desc:'Reunião inicial realizada com o consultor'},
+    {id:'fin',   label:'Reunião Fin/Leads',               desc:'Acesso às planilhas financeira e de leads'},
   ];
   // forms tem 3 estados: '' (nada) / 'enviado' (amarelo) / 'recebido' (verde+done)
   const formsStatus = et.forms_status || (et.forms_done ? 'recebido' : '');
@@ -3062,25 +3063,27 @@ function attachEvents() {
         et.forms_done   = (next === 'recebido'); // mantém compatibilidade com o resto do código
         scheduleSave();
         if (next === 'recebido') {
-          // médico recebeu/preencheu → próximo passo: marcar onboarding
-          triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
+          // médico recebeu/preencheu → próximo passo: marcar Reunião Individual
+          triggerTask('Marcar Reunião Individual com '+nomeFirst, 'bruna', addDays(now(),5));
         } else {
-          // saiu de recebido → remove tarefa de onboarding pendente
-          state.tarefas = state.tarefas.filter(t=>!(t.alunoId===alunoId && !t.done && t.titulo==='Marcar Reunião de Onboarding com '+nomeFirst));
+          // saiu de recebido → remove tarefa de individual pendente
+          state.tarefas = state.tarefas.filter(t=>!(t.alunoId===alunoId && !t.done && t.titulo==='Marcar Reunião Individual com '+nomeFirst));
         }
         render();
         return;
       }
 
-      // demais etapas (onb, fin) — toggle done normal
+      // demais etapas (ind, onb, fin) — toggle done normal
       const key = etapa + '_done';
       const wasDone = et[key];
       et[key] = !wasDone;
       scheduleSave();
       if (!wasDone) {
-        if (etapa==='onb' && et.forms_done) triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst, 'bruna', addDays(now(),7));
+        if (etapa==='ind' && et.forms_done) triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
+        if (etapa==='onb') triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst, 'bruna', addDays(now(),7));
       } else {
         const toRemove = {
+          ind: ['Marcar Reunião de Onboarding com '+nomeFirst],
           onb: ['Marcar Reunião Fin/Leads com '+nomeFirst],
           fin: [],
         }[etapa]||[];
