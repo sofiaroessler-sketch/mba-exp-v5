@@ -338,6 +338,7 @@ async function saveStateToDb(retryCount = 0) {
     aulaAberta:   state.aulaAberta,
     faltaLog:     state.faltaLog,
     riscoCriteria:state.riscoCriteria,
+    aulasCustom:  state.aulasCustom || {},
     accessLog:    state.accessLog.slice(-500), // mantém só as 500 mais recentes
     accessStats:  state.accessStats || {},
     profiles:     state.profiles,
@@ -438,11 +439,13 @@ async function loadStateFromDb() {
         });
       }
       if (d.reunioes)       state.reunioes     = d.reunioes;
+      if (d.aulasCustom)    state.aulasCustom  = d.aulasCustom;
     }
   } catch(e) {
     console.warn('loadState error:', e.message);
     state._dbError = true;
   }
+  aplicarAulasCustom();
   ensureOnboardingTasks();
 }
 
@@ -663,15 +666,75 @@ const AULAS_DEF = [
   {id:'a9',   bloco:2,    label:'Aula 9 — Planejamento',                                     pre:false, pos:false, preName:'', posName:''},
   {id:'11_1', bloco:'11', label:'1:1 — 1',                                                   pre:false, pos:false, preName:'', posName:''},
   {id:'11_2', bloco:'11', label:'1:1 — 2',                                                   pre:false, pos:false, preName:'', posName:''},
-  {id:'a10_1',bloco:3,    label:'Aula 10.1',                                                 pre:false, pos:false, preName:'', posName:''},
+  {id:'a10_1',bloco:3,    label:'Aula 10.1 — Discussão sobre Erros e Acertos',               pre:false, pos:false, preName:'', posName:''},
   {id:'11_3', bloco:'11', label:'1:1 — 3',                                                   pre:false, pos:false, preName:'', posName:''},
-  {id:'a10_2',bloco:3,    label:'Aula 10.2',                                                 pre:false, pos:false, preName:'', posName:''},
+  {id:'a10_2',bloco:3,    label:'Aula 10.2 — Discussão sobre Erros e Acertos',               pre:false, pos:false, preName:'', posName:''},
   {id:'a11',  bloco:3,    label:'Aula 11',                                                   pre:false, pos:false, preName:'', posName:''},
   {id:'11_4', bloco:'11', label:'1:1 — 4',                                                   pre:false, pos:false, preName:'', posName:''},
-  {id:'a12',  bloco:3,    label:'Aula 12 — Finalização',                                     pre:false, pos:false, preName:'', posName:''},
+  {id:'a12',  bloco:3,    label:'Aula 12 — Sucesso, Erros e Próximos Passos',                pre:false, pos:false, preName:'', posName:''},
 ];
 
-const REUNIAO_TIPOS = ['Onboarding','Reunião Individual','Treinamento da Secretária','1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Reunião de Planilhas','Fora do Escopo','Outros'];
+// Aplica customizações de aulas salvas (state.aulasCustom) sobre o AULAS_DEF base.
+// - renames: { aulaId: 'novo label' }  → renomeia (preserva id, logo preserva presença)
+// - extras:  [{id, bloco, label}]      → aulas adicionadas pelo admin (entram no fim)
+// É chamada após carregar do Supabase. Muta o array AULAS_DEF in-place (é const, mas o conteúdo é mutável),
+// assim os ~39 pontos que leem AULAS_DEF já enxergam os nomes/itens novos sem precisar mudar nada.
+function aplicarAulasCustom() {
+  try {
+    const c = state.aulasCustom;
+    if (!c) return;
+    // Renomeações
+    if (c.renames) {
+      AULAS_DEF.forEach(ad => { if (c.renames[ad.id]) ad.label = c.renames[ad.id]; });
+    }
+    // Aulas extras (adicionadas pelo admin) — evita duplicar se já estiverem no array
+    if (Array.isArray(c.extras)) {
+      c.extras.forEach(ex => {
+        if (!ex || !ex.id) return;
+        const blocoNorm = ex.bloco === '11' ? '11' : Number(ex.bloco) || 3;
+        if (!AULAS_DEF.some(ad => ad.id === ex.id)) {
+          AULAS_DEF.push({ id: ex.id, bloco: blocoNorm, label: ex.label || ex.id,
+                           pre:false, pos:false, preName:'', posName:'' });
+        } else {
+          // já existe → só atualiza label
+          const ad = AULAS_DEF.find(a=>a.id===ex.id);
+          if (ad && ex.label) ad.label = ex.label;
+        }
+      });
+    }
+  } catch(e) { console.warn('aplicarAulasCustom erro:', e.message); }
+}
+
+// Renomeia uma aula (preserva id → preserva presença). Persiste em state.aulasCustom.renames.
+function renomearAula(id, novoLabel) {
+  if (!state.aulasCustom) state.aulasCustom = { renames:{}, extras:[] };
+  if (!state.aulasCustom.renames) state.aulasCustom.renames = {};
+  state.aulasCustom.renames[id] = novoLabel;
+  const ad = AULAS_DEF.find(a=>a.id===id);
+  if (ad) ad.label = novoLabel;
+  // se for uma aula extra, atualiza o label lá também
+  if (state.aulasCustom.extras) {
+    const ex = state.aulasCustom.extras.find(e=>e.id===id);
+    if (ex) ex.label = novoLabel;
+  }
+  scheduleSave();
+  showToast('Nome atualizado');
+  render();
+}
+
+// Adiciona uma nova aula no fim da lista. Gera um id único e persiste em state.aulasCustom.extras.
+function adicionarAula(label, bloco) {
+  if (!state.aulasCustom) state.aulasCustom = { renames:{}, extras:[] };
+  if (!Array.isArray(state.aulasCustom.extras)) state.aulasCustom.extras = [];
+  // bloco '11' (reunião 1:1) fica string; blocos 1/2/3 viram número, p/ bater com o AULAS_DEF base
+  const blocoNorm = bloco === '11' ? '11' : Number(bloco);
+  const novoId = 'ax_' + Date.now().toString(36);
+  state.aulasCustom.extras.push({ id: novoId, bloco: blocoNorm, label });
+  AULAS_DEF.push({ id: novoId, bloco: blocoNorm, label, pre:false, pos:false, preName:'', posName:'' });
+  scheduleSave();
+  showToast('Aula adicionada');
+  render();
+}
 
 const ESPECIALIDADES = [
   'Acupuntura','Alergia e Imunologia','Anestesiologia','Angiologia','Cardiologia',
@@ -734,6 +797,7 @@ let state = {
   ],
   faltaLog: {"a4":{"11_3":["nao"],"a7":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a5":{"a11":["nao"],"11_3":["nao"],"11_4":["nao"],"a12":["nao"],"11_1":["nao"]},"a6":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a10":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a11":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a12":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a13":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a14":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_0":["nao"],"11_1":["nao"]},"a15":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a5":["nao"],"11_1":["nao"],"a3":["nao"]},"a16":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_1":["nao"]},"a18":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_1":["nao"]},"a20":{"a7":["nao"],"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a5":["nao"],"11_1":["nao"],"a3":["nao"]},"a21":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"11_1":["nao"],"a4":["nao"]},"a22":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a6":["nao"],"11_1":["nao"],"a4":["nao"]},"a23":{"11_3":["nao"],"11_4":["nao"],"11_2":["nao"],"a6":["nao"],"11_1":["nao"]},"a24":{"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a25":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"a6":["nao"],"a5":["nao"],"a3":["nao"],"a4":["nao"],"11_1":["nao"]},"a26":{"11_3":["nao"],"11_2":["nao"],"a10_1":["nao"],"11_1":["nao"]},"a27":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"a6":["nao"],"a5":["nao"],"11_1":["nao"]},"a28":{"11_3":["nao"],"11_2":["nao"],"a3":["nao"],"11_1":["nao"]},"a29":{"11_3":["nao"],"11_2":["nao"],"a4":["nao"],"a2":["nao"],"11_1":["nao"]},"a31":{"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a32":{"11_3":["nao"],"11_2":["nao"],"a3":["nao"],"a1":["nao"],"a4":["nao"],"11_1":["nao"]},"a33":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a35":{"11_3":["nao"],"11_2":["nao"],"a6":["nao"],"a5":["nao"],"a3":["nao"],"a4":["nao"],"a2":["nao"],"11_1":["nao"]},"a38":{"a7":["nao"],"11_3":["nao"],"11_2":["nao"],"11_1":["nao"]},"a39":{"11_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a41":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"],"a3":["nao"]},"a42":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a43":{"11_2":["nao"],"a10_2":["nao"],"a5":["nao"],"11_1":["nao"]},"a44":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"a5":["nao"],"a1":["nao"],"11_1":["nao"],"a2":["nao"],"a3":["nao"]},"a45":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"],"a2":["nao"],"a3":["nao"]},"a47":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a48":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a3":["nao"]},"a49":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"]},"a50":{"11_2":["nao"],"a10_1":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"],"a3":["nao"]},"a51":{"a7":["nao"],"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a2":["nao"]},"a52":{"11_2":["nao"],"a10_2":["nao"],"11_1":["nao"],"a4":["nao"]},"a54":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a55":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a56":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"a1":["nao"],"11_1":["nao"]},"a57":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a59":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"a1":["nao"],"11_1":["nao"]},"a60":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a61":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"a1":["nao"],"11_1":["nao"]},"a62":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a63":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a64":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a65":{"11_3":["nao"],"11_0":["nao"],"11_2":["nao"],"11_1":["nao"]},"a66":{"11_0":["nao"],"11_1":["nao"]},"a67":{"11_0":["nao"],"11_1":["nao"]},"a68":{"11_0":["nao"],"11_1":["nao"]},"a69":{"11_0":["nao"],"11_1":["nao"]},"a71":{"11_0":["nao"],"11_1":["nao"]},"a72":{"11_0":["nao"],"a2":["nao"],"11_1":["nao"]},"a73":{"11_0":["nao"],"11_1":["nao"]},"a74":{"11_0":["nao"],"11_1":["nao"]},"a75":{"11_0":["nao"],"11_1":["nao"]},"a76":{"11_0":["nao"],"11_1":["nao"]},"a77":{"11_0":["nao"],"11_1":["nao"]},"a79":{"11_0":["nao"],"11_1":["nao"]},"a80":{"11_0":["nao"],"11_1":["nao"]},"a81":{"11_0":["nao"],"11_1":["nao"]},"a82":{"11_0":["nao"],"11_1":["nao"]},"a83":{"11_0":["nao"],"11_1":["nao"]},"a84":{"11_0":["nao"],"11_1":["nao"]},"a85":{"11_0":["nao"],"11_1":["nao"]},"a86":{"11_0":["nao"],"11_1":["nao"]},"a87":{"11_0":["nao"],"11_1":["nao"]},"a89":{"11_0":["nao"],"11_1":["nao"]},"a90":{"11_0":["nao"]},"a91":{"11_0":["nao"]},"a92":{"11_0":["nao"]},"a93":{"11_0":["nao"]},"a94":{"11_0":["nao"]},"a95":{"11_0":["nao"]},"a96":{"11_0":["nao"]},"a97":{"11_0":["nao"]},"a98":{"11_0":["nao"]},"a99":{"11_0":["nao"]},"a101":{"11_0":["nao"]},"a102":{"11_0":["nao"]},"a103":{"11_0":["nao"]},"a104":{"11_0":["nao"]},"a105":{"11_0":["nao"]},"a106":{"11_0":["nao"],"11_1":["nao"]},"a107":{"11_0":["nao"],"11_1":["nao"]},"a108":{"11_0":["nao"],"11_1":["nao"]},"a109":{"11_0":["nao"],"11_1":["nao"]},"a110":{"11_0":["nao"],"11_1":["nao"]},"a111":{"11_0":["nao"],"11_1":["nao"]},"a112":{"11_0":["nao"],"11_1":["nao"]},"a113":{"11_0":["nao"],"11_1":["nao"]},"a114":{"11_0":["nao"],"11_1":["nao"]},"a115":{"11_0":["nao"],"11_1":["nao"]},"a116":{"11_0":["nao"],"11_1":["nao"]},"a117":{"11_0":["nao"],"11_1":["nao"]},"a118":{"11_0":["nao"],"a4":["nao"],"11_1":["nao"]},"a119":{"11_0":["nao"],"11_1":["nao"]},"a120":{"11_0":["nao"],"11_1":["nao"]},"a121":{"11_0":["nao"],"a4":["nao"],"11_1":["nao"]},"a122":{"11_0":["nao"],"11_1":["nao"]},"a123":{"11_0":["nao"]},"a125":{"11_0":["nao"]},"a126":{"11_0":["nao"]},"a127":{"11_0":["nao"]},"a128":{"11_0":["nao"]},"a129":{"11_0":["nao"]},"a130":{"11_0":["nao"]},"a131":{"11_0":["nao"]},"a132":{"11_0":["nao"]},"a133":{"11_0":["nao"]},"a134":{"11_0":["nao"]},"a135":{"11_0":["nao"]},"a136":{"11_0":["nao"]},"a137":{"11_0":["nao"]}},
   riscoCriteria: {maxFaltas:2, maxConsec:2, maxConsecLink:3},
+  aulasCustom: { renames:{}, extras:[] },
 };
 
 function buildInitTurmas() { return [{"id":"T1","nome":"T1","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T2","nome":"T2","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T3","nome":"T3","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T4","nome":"T4","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T5","nome":"T5","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T6","nome":"T6","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T7","nome":"T7","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T8","nome":"T8","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T9","nome":"T9","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T10","nome":"T10","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T11","nome":"T11","inicio":"","fim_previsto":"","concluida":false,"engeId":""},{"id":"T12","nome":"T12","inicio":"","fim_previsto":"","concluida":false,"engeId":""}]; }
@@ -2820,6 +2884,23 @@ function attachEvents() {
     el.addEventListener('click', () => { state.adminTab = el.dataset.adminTab; render(); });
   });
 
+  // Admin Aulas — renomear
+  document.querySelectorAll('[data-aula-rename]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.aulaRename;
+      const novo = document.getElementById('aula-rename-'+id)?.value.trim();
+      if (!novo) return showToast('Nome não pode ficar vazio', 'err');
+      renomearAula(id, novo);
+    });
+  });
+  // Admin Aulas — adicionar
+  document.querySelector('[data-aula-add]')?.addEventListener('click', () => {
+    const label = document.getElementById('nova-aula-label')?.value.trim();
+    const bloco = document.getElementById('nova-aula-bloco')?.value || '3';
+    if (!label) return showToast('Informe o nome da aula', 'err');
+    adicionarAula(label, bloco);
+  });
+
   // OKR events
   document.querySelectorAll('[data-kpi-toggle]').forEach(el => {
     el.addEventListener('click', e => {
@@ -4145,6 +4226,7 @@ function buildAdminPage() {
     {id:'turmas-adm',   label:'Turmas'},
     {id:'medicos-adm',  label:'Médicos'},
     ...(isYgor()   ? [{id:'relatorio',    label:'Relatório de Acesso'}] : []),
+    ...(isYgor()   ? [{id:'aulas-adm',    label:'Aulas'}] : []),
     ...(isBruna()  ? [{id:'monitoramento',label:'Monitoramento de Status'}] : []),
     ...(isMedInt() ? [{id:'minhas-reunioes',label:'Minhas Reuniões'}] : []),
   ];
@@ -4165,6 +4247,7 @@ function buildAdminPage() {
       ${state.adminTab==='turmas-adm'   ? buildAdminTurmas()   : ''}
       ${state.adminTab==='medicos-adm'  ? buildAdminMedicos()  : ''}
       ${state.adminTab==='relatorio'      ? buildAdminRelatorio()   : ''}
+      ${state.adminTab==='aulas-adm'       ? buildAdminAulas()       : ''}
       ${state.adminTab==='monitoramento'   ? buildAdminMonitoramento(): ''}
     </div>
   </div>`;
@@ -4374,6 +4457,53 @@ function buildAdminMedicos() {
 }
 
 // ── Relatório de Acesso ──
+function buildAdminAulas() {
+  const blocoLabel = b => b==='11' ? 'Reunião 1:1' : 'Bloco '+b;
+  const linhas = AULAS_DEF.map(ad => {
+    // conta presença marcada nessa aula (em todas as turmas) — informativo
+    let comPresenca = 0;
+    Object.values(state.presenca||{}).forEach(pt => { if (pt[ad.id]) comPresenca += Object.keys(pt[ad.id]).length; });
+    return `
+    <tr>
+      <td style="color:var(--t4);font-size:11px">${ad.id}</td>
+      <td><input class="inp" id="aula-rename-${ad.id}" value="${(ad.label||'').replace(/"/g,'&quot;')}" style="min-width:280px;padding:7px 10px"></td>
+      <td style="color:var(--t4);font-size:12px;text-align:center">${blocoLabel(ad.bloco)}</td>
+      <td style="text-align:center;color:var(--t4);font-size:12px">${comPresenca>0 ? comPresenca+' marcações' : '—'}</td>
+      <td style="text-align:center"><button class="btn btn-primary btn-xs" data-aula-rename="${ad.id}">Salvar nome</button></td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div>
+    <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:var(--r2);padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:var(--amber-t);line-height:1.5">
+      Renomear uma aula muda o nome dela em todas as turmas, mantendo a presença já registrada. Aulas adicionadas entram no fim da lista.
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>ID</th><th>Nome da aula</th><th style="text-align:center">Bloco</th><th style="text-align:center">Presença</th><th style="text-align:center">Ação</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:20px;border:1px solid var(--border2);border-radius:var(--r2);padding:16px;background:var(--bg-t)">
+      <div style="font-size:13px;font-weight:600;color:var(--t1);margin-bottom:10px">Adicionar nova aula</div>
+      <div class="field-row">
+        <div class="field"><label class="lbl">Nome da aula *</label><input class="inp" id="nova-aula-label" placeholder="Ex: Aula 13 — Tema"></div>
+        <div class="field"><label class="lbl">Bloco</label>
+          <select class="inp" id="nova-aula-bloco">
+            <option value="1">Bloco 1</option>
+            <option value="2">Bloco 2</option>
+            <option value="3" selected>Bloco 3</option>
+            <option value="11">Reunião 1:1</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" data-aula-add>Adicionar aula</button>
+    </div>
+  </div>`;
+}
+
 function buildAdminRelatorio() {
   const stats    = state.accessStats || { byUser: {}, byPage: {}, lastAccess: {} };
   const userStats = Object.entries(stats.byUser || {})
