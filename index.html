@@ -1307,7 +1307,17 @@ function buildCronograma(t, alunos) {
     return buildAulaSection(t, alunos, ad);
   }).join('');
 
-  return `<div>${aulasHtml}</div>`;
+  const legenda = `
+    <div style="background:var(--bg-t);border:1px solid var(--border);border-radius:var(--r2);padding:12px 16px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Como funciona a presença</div>
+      <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--t3);line-height:1.5">
+        <div><span style="display:inline-block;min-width:54px;font-weight:600;color:var(--green-t)">Presente</span> 1 clique = presente ao vivo (P ✓) · 2 cliques = assistiu pela gravação (P ●) · 3 cliques = desmarca</div>
+        <div><span style="display:inline-block;min-width:54px;font-weight:600;color:var(--red-t)">Faltou</span> registra a falta (gera tarefa pra Bruna enviar o link da aula)</div>
+        <div><span style="display:inline-block;min-width:54px;font-weight:600;color:var(--amber-t)">Link</span> marca que o link da aula foi enviado ao médico</div>
+      </div>
+    </div>`;
+
+  return `<div>${legenda}${aulasHtml}</div>`;
 }
 
 function buildAulaSection(t, alunos, ad) {
