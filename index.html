@@ -515,7 +515,7 @@ async function gcalCreateEvent(uid, event) {
     return null;
   }
   try {
-    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify(event),
@@ -552,15 +552,32 @@ function gcalBuildReuniaoEvent(reuniao, aluno) {
   };
 }
 
-// Monta um evento de aula para a API do Google
-function gcalBuildAulaEvent(aulaLabel, turmaLabel, data) {
-  return {
+// Email da Bruna a partir do perfil salvo (vazio enquanto não for preenchido na tela)
+function brunaEmail() {
+  const b = (state.profiles||[]).find(p => p.id === 'bruna');
+  const em = b?.email?.trim();
+  return (em && em.includes('@')) ? em : '';
+}
+
+// Monta um evento de aula para a API do Google (com horário real + lembretes + convite Bruna)
+function gcalBuildAulaEvent(aulaLabel, turmaLabel, data, hora, horaFim) {
+  const tz = 'America/Sao_Paulo';
+  const ini = hora    || '19:30';
+  const fim = horaFim || '21:30';
+  const ev = {
     summary: `Aula · ${aulaLabel} · ${turmaLabel}`,
     description: `Turma ${turmaLabel} — ${aulaLabel}`,
-    start: { date: data },
-    end:   { date: data },
-    reminders: { useDefault: false, overrides: [{method:'popup', minutes:60}] },
+    start: { dateTime: `${data}T${ini}:00`, timeZone: tz },
+    end:   { dateTime: `${data}T${fim}:00`, timeZone: tz },
+    reminders: { useDefault: false, overrides: [
+      { method:'popup', minutes:1440 }, // 1 dia antes
+      { method:'popup', minutes:60 },   // 1h antes
+    ] },
   };
+  // Convida a Bruna (se o email dela já estiver preenchido no perfil)
+  const be = brunaEmail();
+  if (be) ev.attendees = [{ email: be }];
+  return ev;
 }
 // Permission helpers — no labels ever shown in UI
 const GOD_MODE   = ['ygor','bruna','admin'];
@@ -2296,7 +2313,11 @@ function buildModalMarcarAula() {
       <div class="field"><label class="lbl">Responsável</label><select class="inp" id="m-aula-resp"><option value="">—</option>${allResp||resp}</select></div>
       <div class="field"><label class="lbl">Auxiliar</label><select class="inp" id="m-aula-aux"><option value="">—</option>${allResp||resp}</select></div>
     </div>
-    <div class="field"><label class="lbl">Data *</label><input class="inp" type="date" id="m-aula-data" value="${now()}"></div>
+    <div class="field-row">
+      <div class="field"><label class="lbl">Data *</label><input class="inp" type="date" id="m-aula-data" value="${now()}"></div>
+      <div class="field"><label class="lbl">Início</label><input class="inp" type="time" id="m-aula-hora" value="19:30"></div>
+      <div class="field"><label class="lbl">Término</label><input class="inp" type="time" id="m-aula-hora-fim" value="21:30"></div>
+    </div>
   `, `
     <button class="btn btn-ghost" data-close-modal>Cancelar</button>
     <button class="btn btn-primary" data-action="salvar-aula">Confirmar</button>
@@ -3545,11 +3566,13 @@ function salvarAula() {
   const resp = document.getElementById('m-aula-resp')?.value || '';
   const aux = document.getElementById('m-aula-aux')?.value || '';
   const data = document.getElementById('m-aula-data')?.value || '';
+  const hora = document.getElementById('m-aula-hora')?.value || '19:30';
+  const horaFim = document.getElementById('m-aula-hora-fim')?.value || '21:30';
   if (!state.presenca[tid]) state.presenca[tid] = {};
   if (!state.presenca[tid][aulaId]) state.presenca[tid][aulaId] = {};
-  // Store date + responsible
+  // Store date + responsible + horário
   if (!state.aulasDates[tid]) state.aulasDates[tid] = {};
-  state.aulasDates[tid][aulaId] = {data, resp, aux};
+  state.aulasDates[tid][aulaId] = {data, resp, aux, hora, horaFim};
   // If auxiliar selected → add task for them
   if (aux) {
     const auxProfile = PROFILES.find(p=>p.name===aux);
@@ -3582,7 +3605,7 @@ function salvarAula() {
       if (token) {
         const aulaLabel2 = AULAS_DEF.find(a=>a.id===aulaId)?.label||aulaId;
         const turmaLabel2 = state.turmas.find(t=>t.id===tid)?.nome||tid;
-        const event = gcalBuildAulaEvent(aulaLabel2, turmaLabel2, data);
+        const event = gcalBuildAulaEvent(aulaLabel2, turmaLabel2, data, hora, horaFim);
         gcalCreateEvent(respProf.id, event).then(ev => {
           if (ev?.id) showToast('Evento de aula criado no Google Calendar ✓', 'ok');
         });
