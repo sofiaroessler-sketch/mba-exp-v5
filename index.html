@@ -273,26 +273,6 @@ async function sbSignOut() {
 }
 
 // Refresh token silencioso
-async function sbRefreshSession() {
-  const stored = localStorage.getItem('sb_session');
-  if (!stored) return null;
-  try {
-    const s = JSON.parse(stored);
-    // Check expiry
-    if (s.expires_at && Date.now()/1000 < s.expires_at - 60) {
-      sbSession = s;
-      return s;
-    }
-    // Refresh
-    const data = await sbRequest('/auth/v1/token?grant_type=refresh_token', 'POST', { refresh_token: s.refresh_token });
-    sbSession = data;
-    localStorage.setItem('sb_session', JSON.stringify(data));
-    return data;
-  } catch {
-    localStorage.removeItem('sb_session');
-    return null;
-  }
-}
 
 // ── Edge Function: admin-users ──────────────────────────
 // Centraliza operações que precisam da service role key
@@ -307,18 +287,6 @@ async function adminUsersEdgeFn(body) {
   return data;
 }
 
-async function sbInviteUser(email, name, role) {
-  return adminUsersEdgeFn({ action: 'create', email, name, role });
-}
-async function sbDeleteUser(userId) {
-  return adminUsersEdgeFn({ action: 'delete', userId });
-}
-async function sbUpdateUserAdmin(userId, updates) {
-  return adminUsersEdgeFn({ action: 'update', userId, ...updates });
-}
-async function sbListUsers() {
-  return adminUsersEdgeFn({ action: 'list' });
-}
 
 // Usuário: trocar própria senha (usa token do próprio usuário, sem service role)
 async function sbUpdatePassword(newPassword) {
@@ -347,14 +315,6 @@ async function dbUpsert(table, data) {
     throw new Error(t);
   }
   return res.json();
-}
-async function dbUpdate(table, data, match) {
-  const q = Object.entries(match).map(([k,v])=>`${k}=eq.${v}`).join('&');
-  return sbRequest(`/rest/v1/${table}?${q}`, 'PATCH', data);
-}
-async function dbDelete(table, match) {
-  const q = Object.entries(match).map(([k,v])=>`${k}=eq.${v}`).join('&');
-  return sbRequest(`/rest/v1/${table}?${q}`, 'DELETE');
 }
 
 // ── Persistência de estado no Supabase ──────────────────
@@ -483,6 +443,28 @@ async function loadStateFromDb() {
     console.warn('loadState error:', e.message);
     state._dbError = true;
   }
+  ensureOnboardingTasks();
+}
+
+// Garante que todo médico NOVO (ativo, sem responsável designado — mesmo critério da aba "Novos")
+// que ainda não teve onboarding iniciado tenha a tarefa pra Bruna enviar o forms.
+// Restrito a "Novos" para não gerar tarefas em massa para a base antiga já em andamento.
+function ensureOnboardingTasks() {
+  try {
+    (state.alunos||[]).forEach(a => {
+      if (a.status !== 'ativo') return;
+      if (a.responsavel) return; // já tem responsável → não é "novo", não engatilha
+      const et = state.etapas[a.id] || {};
+      const formsIniciado = et.forms_status || et.forms_done;
+      if (formsIniciado) return; // já foi enviado/recebido, não precisa lembrar
+      const titulo = 'Mandar forms de onboarding para ' + (a.nome||'').split(' ')[0];
+      const jaTem = state.tarefas.some(t => t.alunoId===a.id && t.titulo===titulo);
+      if (!jaTem) {
+        addTarefa({titulo, responsavel:'bruna', alunoId:a.id, alunoNome:a.nome, prio:'alta',
+                   descricao:'Novo médico cadastrado — enviar formulário de onboarding'});
+      }
+    });
+  } catch(e) { console.warn('ensureOnboardingTasks erro:', e.message); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -522,42 +504,8 @@ function gcalSetToken(uid, access_token, expires_in) {
     expiry: Date.now() + (expires_in - 60) * 1000
   }));
 }
-function gcalIsConnected(uid) { return !!gcalGetToken(uid); }
 
 // Abre popup OAuth e resolve com o token quando voltar
-function gcalConnect(uid) {
-  return new Promise((resolve, reject) => {
-    const params = new URLSearchParams({
-      client_id: GCAL_CLIENT_ID,
-      redirect_uri: window.location.origin + window.location.pathname,
-      response_type: 'token',
-      scope: GCAL_SCOPES,
-      prompt: 'consent',
-      state: uid,
-    });
-    const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
-    const popup = window.open(url, 'gcal_auth', 'width=500,height=650,left=200,top=100');
-    if (!popup) { reject(new Error('Popup bloqueado')); return; }
-
-    // Quando o popup redirecionar de volta, lê o hash
-    const timer = setInterval(() => {
-      try {
-        if (popup.closed) { clearInterval(timer); reject(new Error('Popup fechado')); return; }
-        const hash = popup.location.hash;
-        if (!hash) return;
-        const p = new URLSearchParams(hash.slice(1));
-        const token = p.get('access_token');
-        const exp   = parseInt(p.get('expires_in') || '3600');
-        if (token) {
-          gcalSetToken(uid, token, exp);
-          popup.close();
-          clearInterval(timer);
-          resolve(token);
-        }
-      } catch (e) { /* cross-origin — aguarda */ }
-    }, 500);
-  });
-}
 
 // Cria um evento no Google Calendar do usuário
 async function gcalCreateEvent(uid, event) {
@@ -622,8 +570,6 @@ function isGod()     { return GOD_MODE.includes(state.user?.id); }
 function isBruna()   { return state.user?.id === 'bruna'; }
 function isYgor()    { return state.user?.id === 'ygor' || state.user?.id === 'admin'; }
 function isMedInt()  { return MEDICOS_INT.includes(state.user?.id); }
-function isConsult() { return CONSULTORES.includes(state.user?.id); }
-function canSeeAll() { return isGod(); } // turmas/medicos full access
 const RESPONSAVEIS = ['Otávio','Emura','Amyr','Simone','Isabella']; // todos os consultores
 
 function getResponsaveisOpts(selected='') {
@@ -689,6 +635,7 @@ const PLANILHA_ETAPA_MAP = {
 const AULAS_DEF = [
   {id:'a1',   bloco:1,    label:'Aula 1 — Discovery e Teste de Funil',                       pre:false, pos:false, preName:'', posName:''},
   {id:'a2',   bloco:1,    label:'Aula 2 — Funil de Vendas',                                  pre:false, pos:true,  preName:'', posName:'Material pós Aula 2'},
+  {id:'sec',  bloco:'11', label:'Treinamento da Secretária',                                 pre:false, pos:false, preName:'', posName:''},
   {id:'a3',   bloco:1,    label:'Aula 3 — Produto + Jornada',                                pre:true,  pos:true,  preName:'Material pré Aula 3', posName:'Material pós Aula 3'},
   {id:'a4',   bloco:1,    label:'Aula 4 — Boas Práticas Financeiras',                        pre:false, pos:false, preName:'', posName:''},
   {id:'11_0', bloco:'11', label:'1:1 — 0',                                                   pre:false, pos:false, preName:'', posName:''},
@@ -706,7 +653,7 @@ const AULAS_DEF = [
   {id:'a12',  bloco:3,    label:'Aula 12 — Finalização',                                     pre:false, pos:false, preName:'', posName:''},
 ];
 
-const REUNIAO_TIPOS = ['Onboarding','Reunião Individual','1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Reunião de Planilhas','Fora do Escopo','Outros'];
+const REUNIAO_TIPOS = ['Onboarding','Reunião Individual','Treinamento da Secretária','1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Reunião de Planilhas','Fora do Escopo','Outros'];
 
 const ESPECIALIDADES = [
   'Acupuntura','Alergia e Imunologia','Anestesiologia','Angiologia','Cardiologia',
@@ -1290,10 +1237,10 @@ function buildCronograma(t, alunos) {
     return alunos.length > 0 && alunos.every(a => ['sim','sim2','nao','link'].includes(pMap[a.id]));
   }
 
-  // Determine if bloco0 is done (all 5 etapas done for all alunos)
+  // Determine if bloco0 is done (todas etapas iniciais para todos os alunos)
   function isBloco0Done() {
     if (!alunos.length) return false;
-    const etapas = ['forms','onb','ind','fin','sec'];
+    const etapas = ['forms','onb','fin'];
     return alunos.every(a => {
       const et = state.etapas[a.id] || {};
       return etapas.every(e => et[e+'_done']);
@@ -1475,138 +1422,8 @@ function buildAulaSection(t, alunos, ad) {
   </div>`;
 }
 
-function buildBloco0(t, alunos) {
-  const etapasLabels = [
-    {id:'forms', label:'Formulário de Onboarding enviado'},
-    {id:'onb',   label:'Reunião de Onboarding'},
-    {id:'fin',   label:'Reunião Fin/Leads'},
-    {id:'sec',   label:'Treinamento da Secretária'},
-  ];
 
-  const rows = alunos.map(a => {
-    const et = state.etapas[a.id] || {};
-    return `<tr>
-      <td style="font-weight:500;color:var(--brand-h);min-width:160px;cursor:pointer" data-open-aluno="${a.id}" data-open-tab="reunioes">${a.nome}</td>
-      <td style="color:var(--t4);font-size:12px">${a.responsavel||'—'}</td>
-      ${etapasLabels.map(e => {
-        const done = et[e.id+'_done'];
-        return `<td style="text-align:center">
-          <button class="pres-btn ${done?'sim':''}" data-etapa="${e.id}" data-aluno-id="${a.id}" title="${e.label}" ${(!isGod()&&!isBruna())?'disabled style="opacity:.5;cursor:default"':''}>${done ? '✓' : '—'}</button>
-        </td>`;
-      }).join('')}
-    </tr>`;
-  }).join('');
 
-  return `
-  <div class="prog-stage" style="margin-bottom:12px">
-    <div class="prog-stage-hdr" style="margin-bottom:12px">
-      <h3>🎯 Bloco 0 — Etapas Iniciais</h3>
-    </div>
-    <div class="tbl-wrap" style="overflow-x:auto">
-      <table class="tbl">
-        <thead><tr>
-          <th>Aluno</th>
-          <th>Responsável</th>
-          ${etapasLabels.map(e=>`<th style="text-align:center;font-size:9.5px">${e.label}</th>`).join('')}
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  </div>`;
-}
-
-function buildBloco(t, alunos, blocoNum, titulo, aulaIds, prox11Id) {
-  const marcadas = state.presenca[t.id] || {};
-  const aulasBloco = AULAS_DEF.filter(a => aulaIds.includes(a.id));
-  const blocoCompleto = aulasBloco.every(a => marcadas[a.id]);
-
-  const rows = alunos.map(a => {
-    return `<tr>
-      <td style="font-weight:500;color:var(--brand-h);min-width:160px;cursor:pointer" data-open-aluno="${a.id}" data-open-tab="reunioes">${a.nome}</td>
-      <td style="color:var(--t4);font-size:12px">${a.responsavel||'—'}</td>
-      ${aulasBloco.map(ad => {
-        const pMap = marcadas[ad.id] || {};
-        const pres = pMap[a.id];
-        const cls = pres==='sim'?'sim':pres==='nao'?'nao':pres==='link'?'link':pres==='reset'?'reset':'';
-        return `<td style="text-align:center">
-          <div style="display:flex;gap:3px;justify-content:center">
-            ${['sim','nao','link','reset'].map(op=>`
-              <button class="pres-btn ${pres===op?op:''}" data-presenca="${op}" data-aula="${ad.id}" data-aluno-id="${a.id}" data-turma="${t.id}" title="${op}" style="padding:3px 6px;font-size:10px">${op==='sim'?'P':op==='nao'?'F':op==='link'?'L':'R'}</button>
-            `).join('')}
-          </div>
-        </td>`;
-      }).join('')}
-    </tr>`;
-  }).join('');
-
-  const prox11Def = AULAS_DEF.find(a=>a.id===prox11Id);
-
-  return `
-  <div class="prog-stage" style="margin-bottom:12px">
-    <div class="prog-stage-hdr" style="margin-bottom:12px">
-      <h3>${titulo}</h3>
-      ${blocoCompleto ? `<span class="pill pill-green">✓ Concluído</span>` : ''}
-    </div>
-    <div class="tbl-wrap" style="overflow-x:auto">
-      <table class="tbl">
-        <thead><tr>
-          <th>Aluno</th>
-          <th>Responsável</th>
-          ${aulasBloco.map(ad=>`<th style="text-align:center;max-width:100px;font-size:9.5px">${ad.label.split('—')[1]?.trim()||ad.label}</th>`).join('')}
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-    ${blocoCompleto && prox11Def ? `
-      <div class="alert-bar" style="margin-top:10px;background:var(--brand-dim);border-color:rgba(99,102,241,.3);color:var(--brand-h)">
-        ${I.alert} Bloco concluído — os responsáveis devem agendar o <strong>${prox11Def.label}</strong> com seus alunos
-      </div>
-    ` : ''}
-  </div>`;
-}
-
-function buildEtapasFinais(t, alunos) {
-  const marcadas = state.presenca[t.id] || {};
-  const etapas = [
-    {ids:['11_2'], titulo:'1:1 — 2', prox:'11_2'},
-    {ids:['a10_1'], titulo:'Aula 10.1'},
-    {ids:['11_3'], titulo:'1:1 — 3'},
-    {ids:['a10_2'], titulo:'Aula 10.2'},
-    {ids:['a11'], titulo:'Aula 11'},
-    {ids:['11_4'], titulo:'1:1 — 4'},
-    {ids:['a12'], titulo:'Aula 12 — Finalização'},
-  ];
-  return etapas.map(e => {
-    const defs = AULAS_DEF.filter(a=>e.ids.includes(a.id));
-    if (!defs.length) return '';
-    const rows = alunos.map(a => `
-      <tr>
-        <td style="font-weight:500;color:var(--t1)">${a.nome}</td>
-        <td style="color:var(--t4);font-size:12px">${a.responsavel||'—'}</td>
-        ${defs.map(ad => {
-          const pMap = marcadas[ad.id] || {};
-          const pres = pMap[a.id];
-          return `<td style="text-align:center">
-            <div style="display:flex;gap:3px;justify-content:center">
-              ${['sim','nao','link','reset'].map(op=>`
-                <button class="pres-btn ${pres===op?op:''}" data-presenca="${op}" data-aula="${ad.id}" data-aluno-id="${a.id}" data-turma="${t.id}" title="${op}" style="padding:3px 6px;font-size:10px">${op==='sim'?'P':op==='nao'?'F':op==='link'?'L':'R'}</button>
-              `).join('')}
-            </div>
-          </td>`;
-        }).join('')}
-      </tr>`).join('');
-    return `
-    <div class="prog-stage" style="margin-bottom:12px">
-      <div class="prog-stage-hdr" style="margin-bottom:12px"><h3>${e.titulo}</h3></div>
-      <div class="tbl-wrap" style="overflow-x:auto">
-        <table class="tbl">
-          <thead><tr><th>Aluno</th><th>Responsável</th>${defs.map(ad=>`<th style="text-align:center">${ad.label}</th>`).join('')}</tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }).join('');
-}
 
 function buildPresencaView(t, alunos) {
   const marcadas = state.presenca[t.id] || {};
@@ -1941,12 +1758,14 @@ function buildDetailEtapas(a) {
   const et = state.etapas[a.id] || {};
   const canEdit = isGod() || isBruna();
   const etapas = [
-    {id:'forms', label:'Formulário de Onboarding enviado', desc:'Médico preencheu o formulário de diagnóstico'},
+    {id:'forms', label:'Formulário de Onboarding', desc:'1 clique: enviado · 2 cliques: médico recebeu/preencheu'},
     {id:'onb',   label:'Reunião de Onboarding',            desc:'Reunião inicial realizada com o consultor'},
     {id:'fin',   label:'Reunião Fin/Leads',                desc:'Acesso às planilhas financeira e de leads'},
-    {id:'sec',   label:'Treinamento da Secretária',        desc:'Secretária treinada e integrada ao processo'},
   ];
-  const totalDone = etapas.filter(e => et[e.id+'_done']).length;
+  // forms tem 3 estados: '' (nada) / 'enviado' (amarelo) / 'recebido' (verde+done)
+  const formsStatus = et.forms_status || (et.forms_done ? 'recebido' : '');
+  const isEtapaDone = (id) => id==='forms' ? formsStatus==='recebido' : !!et[id+'_done'];
+  const totalDone = etapas.filter(e => isEtapaDone(e.id)).length;
   const pct = Math.round((totalDone / etapas.length) * 100);
 
   return `
@@ -1962,7 +1781,31 @@ function buildDetailEtapas(a) {
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
       ${etapas.map((e,i) => {
-        const done = !!et[e.id+'_done'];
+        if (e.id === 'forms') {
+          // 3 estados visuais
+          const st = formsStatus; // '' | 'enviado' | 'recebido'
+          const cor = st==='recebido' ? 'var(--green)' : st==='enviado' ? 'var(--amber)' : 'var(--border)';
+          const bg  = st==='recebido' ? 'rgba(34,197,94,.05)' : st==='enviado' ? 'rgba(217,119,6,.06)' : 'var(--bg-s)';
+          const bd  = st==='recebido' ? 'rgba(34,197,94,.25)' : st==='enviado' ? 'rgba(217,119,6,.3)' : 'var(--border)';
+          const ico = st==='recebido' ? '✓' : st==='enviado' ? '●' : (i+1);
+          const txtCor = st==='recebido' ? '#fff' : st==='enviado' ? '#fff' : 'var(--t4)';
+          const statusLabel = st==='recebido' ? 'Recebido/preenchido' : st==='enviado' ? 'Enviado — aguardando' : 'Não enviado';
+          return `
+          <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r2);border:1px solid ${bd};background:${bg}">
+            <div style="width:28px;height:28px;border-radius:50%;background:${cor};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:${txtCor}">${ico}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13.5px;font-weight:600;color:${st?'var(--t1)':'var(--t2)'}">${e.label}</div>
+              <div style="font-size:11.5px;color:var(--t4);margin-top:2px">${e.desc}</div>
+              <div style="font-size:11px;font-weight:600;margin-top:3px;color:${cor==='var(--border)'?'var(--t4)':cor}">${statusLabel}</div>
+            </div>
+            ${canEdit ? `
+            <button class="btn btn-sm ${st?'btn-ghost':''}" style="${st?'color:var(--t4)':''}" data-etapa="forms" data-aluno-id="${a.id}">
+              ${st==='recebido' ? 'Resetar' : st==='enviado' ? 'Marcar recebido' : 'Marcar enviado'}
+            </button>` : `
+            <span style="font-size:11px;color:${cor==='var(--border)'?'var(--t4)':cor}">${statusLabel}</span>`}
+          </div>`;
+        }
+        const done = isEtapaDone(e.id);
         return `
         <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--r2);border:1px solid ${done?'rgba(34,197,94,.25)':'var(--border)'};background:${done?'rgba(34,197,94,.05)':'var(--bg-s)'}">
           <div style="width:28px;height:28px;border-radius:50%;background:${done?'var(--green)':'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:${done?'#fff':'var(--t4)'}">
@@ -2011,6 +1854,7 @@ function buildDetailInfo(a) {
         </div>
         <div class="field"><label class="lbl">Cidade</label><input class="inp" id="ef-cidade" value="${ef.cidade||a.cidade||''}"></div>
         <div class="field"><label class="lbl">WhatsApp</label><input class="inp" id="ef-wpp" value="${ef.whatsapp||a.whatsapp||''}"></div>
+        <div class="field"><label class="lbl">Início previsto</label><input class="inp" type="date" id="ef-inicio" value="${ef.inicio||a.inicio||''}"></div>
         <div class="field"><label class="lbl">Término previsto</label><input class="inp" type="date" id="ef-fim" value="${ef.fim_previsto||a.fim_previsto||''}"></div>
         <div class="field"><label class="lbl">Link Planilha Financeira</label><input class="inp" id="ef-linkfin" value="${ef.link_fin||a.link_fin||''}"></div>
         <div class="field"><label class="lbl">Link Planilha de Leads</label><input class="inp" id="ef-linkleads" value="${ef.link_leads||a.link_leads||''}"></div>
@@ -2147,11 +1991,73 @@ function buildDetailReunioes(a) {
 }
 
 function buildDetailNotas(a) {
+  // Migração: se a.notas for string antiga com conteúdo, converte em 1 bloco preservando o texto
+  if (typeof a.notas === 'string') {
+    const txt = a.notas.trim();
+    a.notas = txt ? [{id:'nt_old', autorId:'', autorNome:'—', data:'', texto:txt, comentarios:[]}] : [];
+  }
+  if (!Array.isArray(a.notas)) a.notas = [];
+  const uid = state.user?.id;
+  const editId = state.notaEditId; // nota sendo editada inline
+
+  const notasHtml = a.notas.length === 0
+    ? `<div class="empty-state" style="padding:24px 0"><p>Nenhuma nota ainda</p></div>`
+    : a.notas.slice().reverse().map(n => {
+        const ehDono = n.autorId && n.autorId === uid;
+        const emEdicao = editId === n.id;
+        const coments = n.comentarios || [];
+        if (emEdicao) {
+          return `
+          <div style="border:1px solid var(--brand-h);border-radius:var(--r2);padding:14px 16px;margin-bottom:10px;background:var(--bg-s)">
+            <div class="field" style="margin-bottom:8px"><label class="lbl">Data</label><input class="inp" id="nota-edit-data-${n.id}" value="${n.data||''}" placeholder="ex: 28/05/2026" style="padding:6px 10px"></div>
+            <textarea class="note-area" id="nota-edit-texto-${n.id}" style="min-height:80px">${n.texto||''}</textarea>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn btn-primary btn-sm" data-nota-save-edit="${n.id}" data-aluno-id="${a.id}">Salvar</button>
+              <button class="btn btn-ghost btn-sm" data-nota-cancel-edit="1">Cancelar</button>
+            </div>
+          </div>`;
+        }
+        return `
+        <div style="border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px;margin-bottom:10px;background:var(--bg-s)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:24px;height:24px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--brand-h)">${(n.autorNome||'—').charAt(0)}</div>
+              <span style="font-size:12.5px;font-weight:600;color:var(--t1)">${n.autorNome||'—'}</span>
+              ${n.data ? `<span style="font-size:11.5px;color:var(--t4)">· ${n.data}</span>` : ''}
+            </div>
+            ${ehDono ? `<button class="btn btn-ghost btn-xs" data-nota-edit="${n.id}">${I.edit}</button>` : ''}
+          </div>
+          <div style="font-size:13px;color:var(--t2);line-height:1.6;white-space:pre-wrap">${n.texto||''}</div>
+
+          ${coments.length ? `
+          <div style="margin-top:10px;padding-left:12px;border-left:2px solid var(--border);display:flex;flex-direction:column;gap:8px">
+            ${coments.map(c => `
+              <div>
+                <span style="font-size:11.5px;font-weight:600;color:var(--brand-h)">${c.autorNome||'—'}</span>
+                <span style="font-size:12.5px;color:var(--t3);margin-left:6px">${c.texto||''}</span>
+              </div>`).join('')}
+          </div>` : ''}
+
+          <div style="margin-top:10px;display:flex;gap:6px">
+            <input class="inp" id="nota-coment-${n.id}" placeholder="Comentar..." style="padding:6px 10px;font-size:12.5px;flex:1">
+            <button class="btn btn-ghost btn-sm" data-nota-comentar="${n.id}" data-aluno-id="${a.id}">Comentar</button>
+          </div>
+        </div>`;
+      }).join('');
+
   return `
   <div>
     <div class="section-title">Notas</div>
-    <textarea class="note-area" id="notas-area" placeholder="Anotações livres...">${a.notas||''}</textarea>
-    <button class="btn btn-primary btn-sm" style="margin-top:10px" data-action="salvar-notas">Salvar</button>
+    <!-- Adicionar nota -->
+    <div style="border:1px solid var(--border2);border-radius:var(--r2);padding:14px 16px;margin-bottom:16px;background:var(--bg-t)">
+      <div class="field" style="margin-bottom:8px">
+        <label class="lbl">Data</label>
+        <input class="inp" id="nova-nota-data" placeholder="ex: 28/05/2026" style="padding:7px 10px">
+      </div>
+      <textarea class="note-area" id="nova-nota-texto" placeholder="Escreva uma nota..." style="min-height:70px"></textarea>
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" data-nota-add data-aluno-id="${a.id}">Adicionar nota</button>
+    </div>
+    ${notasHtml}
   </div>`;
 }
 
@@ -2750,7 +2656,6 @@ function attachEvents() {
       if (a === 'processar-import')         processarImport();
       if (a === 'salvar-alocar-turma') salvarAlocarTurma();
       if (a === 'salvar-logcs') salvarLogCS();
-      if (a === 'salvar-notas') salvarNotas();
       if (a === 'salvar-reuniao-calendario') salvarReuniaoCalendario();
       if (a === 'salvar-reagendar')    salvarReagendar();
       if (a === 'novo-okr')  { state.modal={type:'novo-okr', alunoId:el.dataset.alunoId}; render(); }
@@ -2828,7 +2733,20 @@ function attachEvents() {
 
   // Close panel
   document.querySelector('[data-close-panel]')?.addEventListener('click', () => {
-    state.selAluno = null; state.editandoAluno = false; render();
+    state.selAluno = null; state.editandoAluno = false; state.notaEditId = null; render();
+  });
+
+  // Notas em blocos
+  document.querySelector('[data-nota-add]')?.addEventListener('click', () => adicionarNota());
+  document.querySelectorAll('[data-nota-edit]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); editarNota(el.dataset.notaEdit); });
+  });
+  document.querySelector('[data-nota-cancel-edit]')?.addEventListener('click', () => cancelarEdicaoNota());
+  document.querySelectorAll('[data-nota-save-edit]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); salvarEdicaoNota(el.dataset.notaSaveEdit); });
+  });
+  document.querySelectorAll('[data-nota-comentar]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); comentarNota(el.dataset.notaComentar); });
   });
 
   // Open aluno panel
@@ -3027,9 +2945,17 @@ function attachEvents() {
       const al=state.alunos.find(a=>a.id===alunoId);
       const respId=PROFILES.find(p=>p.name===al?.responsavel)?.id||'otavio';
       const trigT=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.alunoId===alunoId&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:respId,alunoId,alunoNome:al?.nome,prio:'alta'}); };
+      // alerta para a Bruna, por turma (não duplica por turma)
+      const trigBruna=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.responsavel==='bruna'&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:'bruna',prio:'alta'}); };
       if(next==='sim'||next==='sim2'){
         const ok=(id)=>{const v=(state.presenca[tid][id]||{})[alunoId];return v==='sim'||v==='sim2'||v==='link';};
-        if(['a1','a2','a3','a4'].includes(aulaId)&&ok('a4')) trigT('Marcar 1:1 — 0 com '+(al?.nome||''));
+        // Pós Aula 2 → consultor marca Treinamento da Secretária
+        if(['a1','a2'].includes(aulaId)&&ok('a2')) trigT('Marcar Treinamento da Secretária com '+(al?.nome||''));
+        if(['a1','a2','a3','a4'].includes(aulaId)&&ok('a4')) {
+          trigT('Marcar 1:1 — 0 com '+(al?.nome||''));
+          // Bruna avisa o grupo da turma sobre a pausa entre aula 4 e 5
+          trigBruna('Avisar no grupo da '+tid+' sobre a pausa de 1 mês entre Aula 4 e 5');
+        }
         if(['a5','a6','a7','a9'].includes(aulaId)&&ok('a9')) trigT('Marcar 1:1 — 1 com '+(al?.nome||''));
         if(aulaId==='a10_1') trigT('Marcar 1:1 — 3 com '+(al?.nome||''));
         if(aulaId==='a10_2') trigT('Marcar 1:1 — 4 com '+(al?.nome||''));
@@ -3091,9 +3017,15 @@ function attachEvents() {
       if (op === 'sim' || op === 'link') {
         const pTid = state.presenca[tid];
         const marked = (id) => { const m = (pTid[id]||{})[alunoId]; return m==='sim'||m==='link'; };
-        // After Aula 4 → trigger 1:1-0
-        if (['a1','a2','a3','a4'].includes(aulaId) && marked('a4'))
+        const trigBruna=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.responsavel==='bruna'&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:'bruna',prio:'alta'}); };
+        // Pós Aula 2 → consultor marca Treinamento da Secretária
+        if (['a1','a2'].includes(aulaId) && marked('a2'))
+          triggerTask('Marcar Treinamento da Secretária com ' + (al?.nome||''));
+        // After Aula 4 → trigger 1:1-0 + alerta Bruna sobre pausa
+        if (['a1','a2','a3','a4'].includes(aulaId) && marked('a4')) {
           triggerTask('Marcar 1:1 — 0 com ' + (al?.nome||''));
+          trigBruna('Avisar no grupo da '+tid+' sobre a pausa de 1 mês entre Aula 4 e 5');
+        }
         // After Aula 9 → trigger 1:1-1
         if (['a5','a6','a7','a9'].includes(aulaId) && marked('a9'))
           triggerTask('Marcar 1:1 — 1 com ' + (al?.nome||''));
@@ -3113,31 +3045,44 @@ function attachEvents() {
       e.stopPropagation();
       const {etapa, alunoId} = el.dataset;
       if (!state.etapas[alunoId]) state.etapas[alunoId] = {};
-      const key = etapa + '_done';
-      const wasDone = state.etapas[alunoId][key];
-      state.etapas[alunoId][key] = !wasDone;
       const et = state.etapas[alunoId];
       const a  = state.alunos.find(x=>x.id===alunoId);
       const respId = PROFILES.find(p=>p.name===a?.responsavel)?.id || 'otavio';
-      // helper: only add task if no pending task with same titulo+alunoId exists
+      const nomeFirst = a?.nome?.split(' ')[0]||'';
       function triggerTask(titulo, responsavel, prazo) {
         const exists = state.tarefas.some(t=>!t.done && t.alunoId===alunoId && t.titulo===titulo);
         if (!exists) addTarefa({titulo, responsavel, alunoId, alunoNome:a?.nome, prio:'media', prazo:prazo||''});
       }
-      const nomeFirst = a?.nome?.split(' ')[0]||'';
+
+      // FORMS — 3 estados: '' → 'enviado' (amarelo) → 'recebido' (verde) → '' ...
+      if (etapa === 'forms') {
+        const cur = et.forms_status || (et.forms_done ? 'recebido' : '');
+        const next = cur === '' ? 'enviado' : cur === 'enviado' ? 'recebido' : '';
+        et.forms_status = next;
+        et.forms_done   = (next === 'recebido'); // mantém compatibilidade com o resto do código
+        scheduleSave();
+        if (next === 'recebido') {
+          // médico recebeu/preencheu → próximo passo: marcar onboarding
+          triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
+        } else {
+          // saiu de recebido → remove tarefa de onboarding pendente
+          state.tarefas = state.tarefas.filter(t=>!(t.alunoId===alunoId && !t.done && t.titulo==='Marcar Reunião de Onboarding com '+nomeFirst));
+        }
+        render();
+        return;
+      }
+
+      // demais etapas (onb, fin) — toggle done normal
+      const key = etapa + '_done';
+      const wasDone = et[key];
+      et[key] = !wasDone;
       scheduleSave();
       if (!wasDone) {
-        // CHECK — create tasks for Bruna
-        if (etapa==='forms')                triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
-        if (etapa==='onb' && et.forms_done) triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst,     'bruna', addDays(now(),7));
-        if (etapa==='fin' && et.onb_done)   triggerTask('Treinamento da Secretária — '+nomeFirst,      'bruna', addDays(now(),7));
+        if (etapa==='onb' && et.forms_done) triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst, 'bruna', addDays(now(),7));
       } else {
-        // UNCHECK — remove corresponding pending tasks
         const toRemove = {
-          forms: ['Marcar Reunião de Onboarding com '+nomeFirst, 'Onboarding: acompanhar forms de '+nomeFirst],
-          onb:   ['Marcar Reunião Fin/Leads com '+nomeFirst],
-          fin:   ['Treinamento da Secretária — '+nomeFirst],
-          sec:   [],
+          onb: ['Marcar Reunião Fin/Leads com '+nomeFirst],
+          fin: [],
         }[etapa]||[];
         state.tarefas = state.tarefas.filter(t=>!(t.alunoId===alunoId && !t.done && toRemove.includes(t.titulo)));
       }
@@ -3502,14 +3447,9 @@ function salvarMedico() {
     link_fin: '', link_leads: '',
   };
   state.alunos.push(novo);
-  // Trigger tasks for responsavel
-  const respId = PROFILES.find(p=>p.name===resp)?.id;
-  // Bruna gets the onboarding tasks with deadline = 5 days from now
+  // Trigger task for Bruna — mandar forms de onboarding (cadeia segue após forms recebido)
   const prazoForms = addDays(now(), 5);
-  const turmaInicio = state.turmas.find(t=>t.id===novo.turma)?.inicio;
-  const prazoOnb = turmaInicio ? addDays(turmaInicio, -7) : addDays(now(), 7);
-  addTarefa({titulo:'Onboarding: acompanhar forms de ' + nome.split(' ')[0], responsavel:'bruna', alunoId:novo.id, alunoNome:nome, prio:'alta', prazo:prazoForms});
-  addTarefa({titulo:'Marcar Reunião de Onboarding com ' + nome.split(' ')[0], responsavel:'bruna', alunoId:novo.id, alunoNome:nome, prio:'alta', prazo:prazoOnb});
+  addTarefa({titulo:'Mandar forms de onboarding para ' + nome.split(' ')[0], responsavel:'bruna', alunoId:novo.id, alunoNome:nome, prio:'alta', prazo:prazoForms, descricao:'Novo médico cadastrado — enviar formulário de onboarding'});
   state.modal = null;
   showToast(`${nome} cadastrado`);
   scheduleSave();
@@ -3667,10 +3607,76 @@ function salvarLogCS() {
   scheduleSave(); }
 }
 
-function salvarNotas() {
-  const a = state.alunos.find(x=>x.id===state.selAluno);
-  if (a) { a.notas = document.getElementById('notas-area')?.value||''; showToast('Notas salvas');
-  scheduleSave(); }
+// ── Notas em blocos ──
+function _getAluno() { return state.alunos.find(x=>x.id===state.selAluno); }
+function _ensureNotasArray(a) {
+  if (typeof a.notas === 'string') {
+    const txt = a.notas.trim();
+    a.notas = txt ? [{id:'nt_old', autorId:'', autorNome:'—', data:'', texto:txt, comentarios:[]}] : [];
+  }
+  if (!Array.isArray(a.notas)) a.notas = [];
+}
+
+function adicionarNota() {
+  const a = _getAluno(); if (!a) return;
+  _ensureNotasArray(a);
+  const texto = document.getElementById('nova-nota-texto')?.value.trim();
+  const data  = document.getElementById('nova-nota-data')?.value.trim() || '';
+  if (!texto) return showToast('Escreva a nota', 'err');
+  a.notas.push({
+    id: 'nt_' + Date.now() + Math.random().toString(36).slice(2,5),
+    autorId: state.user?.id || '',
+    autorNome: state.user?.name || '—',
+    data, texto, comentarios: []
+  });
+  // Notifica o consultor responsável do médico (se não for quem escreveu)
+  const respProf = PROFILES.find(p=>p.name===a.responsavel);
+  if (respProf && respProf.id !== state.user?.id) {
+    addTarefa({titulo:`Nova nota em ${a.nome.split(' ')[0]}`, responsavel:respProf.id, alunoId:a.id, alunoNome:a.nome, prio:'media', descricao:`${state.user?.name||'Alguém'} adicionou uma nota`});
+  }
+  showToast('Nota adicionada');
+  scheduleSave();
+  render();
+}
+
+function editarNota(notaId) { state.notaEditId = notaId; render(); }
+function cancelarEdicaoNota() { state.notaEditId = null; render(); }
+
+function salvarEdicaoNota(notaId) {
+  const a = _getAluno(); if (!a) return;
+  _ensureNotasArray(a);
+  const n = a.notas.find(x=>x.id===notaId);
+  if (!n) return;
+  if (n.autorId !== state.user?.id) return showToast('Só o autor pode editar', 'err');
+  n.texto = document.getElementById('nota-edit-texto-'+notaId)?.value.trim() || n.texto;
+  n.data  = document.getElementById('nota-edit-data-'+notaId)?.value.trim() || '';
+  state.notaEditId = null;
+  showToast('Nota atualizada');
+  scheduleSave();
+  render();
+}
+
+function comentarNota(notaId) {
+  const a = _getAluno(); if (!a) return;
+  _ensureNotasArray(a);
+  const n = a.notas.find(x=>x.id===notaId);
+  if (!n) return;
+  const inp = document.getElementById('nota-coment-'+notaId);
+  const texto = inp?.value.trim();
+  if (!texto) return;
+  if (!n.comentarios) n.comentarios = [];
+  n.comentarios.push({
+    id: 'cm_' + Date.now() + Math.random().toString(36).slice(2,5),
+    autorId: state.user?.id || '',
+    autorNome: state.user?.name || '—',
+    texto
+  });
+  // Notifica o dono da nota (se não for quem comentou)
+  if (n.autorId && n.autorId !== state.user?.id) {
+    addTarefa({titulo:`Comentário na sua nota — ${a.nome.split(' ')[0]}`, responsavel:n.autorId, alunoId:a.id, alunoNome:a.nome, prio:'media', descricao:`${state.user?.name||'Alguém'}: ${texto}`});
+  }
+  scheduleSave();
+  render();
 }
 
 
@@ -4090,17 +4096,6 @@ function buildCalendarioPage() {
   </div>`;
 }
 
-  // Collect all scheduled aulas across all turmas
-  const allAulas = [];
-  state.turmas.forEach(t => {
-    const datesMap = state.aulasDates[t.id] || {};
-    Object.entries(datesMap).forEach(([aulaId, info]) => {
-      if (!info.data) return;
-      const def = AULAS_DEF.find(a => a.id === aulaId);
-      if (!def) return;
-      allAulas.push({...def, ...info, turma: t.id, turmaName: t.nome});
-    });
-  });
 // ═══════════════════════════════════════════════════════
 // ADMIN PAGE
 // ═══════════════════════════════════════════════════════
@@ -4209,14 +4204,13 @@ function buildAdminPerfis() {
     <div class="tbl-wrap">
       <table class="tbl">
         <thead><tr>
-          <th>Nome</th><th>Email</th><th style="text-align:center">Status</th><th>Último acesso</th><th style="text-align:center">Ações</th>
+          <th>Nome</th><th>Email</th><th>Último acesso</th><th style="text-align:center">Ações</th>
         </tr></thead>
         <tbody>
           ${state.profiles.map(p => {
             const lastTs = (state.accessStats?.lastAccess || {})[p.id];
             const lastDt = lastTs ? new Date(lastTs).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
             const hasEmail = p.email && p.email.includes('@');
-            const hasCred  = hasEmail && p.sbId;
             return `<tr>
               <td>
                 <div style="display:flex;align-items:center;gap:8px">
@@ -4225,11 +4219,6 @@ function buildAdminPerfis() {
                 </div>
               </td>
               <td style="color:var(--t4)">${hasEmail ? p.email : '<span style="color:var(--amber-t);font-size:11px">Sem email</span>'}</td>
-              <td style="text-align:center">
-                ${hasCred
-                  ? '<span class="pill pill-green" style="font-size:10px">✓ Acesso ativo</span>'
-                  : '<span class="pill pill-amber" style="font-size:10px">Sem acesso</span>'}
-              </td>
               <td style="color:var(--t4);font-size:12px">${lastDt}</td>
               <td style="text-align:center">
                 <div style="display:flex;gap:4px;justify-content:center">
