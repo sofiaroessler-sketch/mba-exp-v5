@@ -631,7 +631,7 @@ const PLANILHA_AULA_MAP = {
   'Aula 5':     'a5',
   'Aula 6':     'a6',
   'Aula 7':     'a7',
-  'Aula 8':     'a9',  // mapped to a9 (Aula 9 slot)
+  'Aula 8':     'a8',
   'Aula 9':     'a9',
   '1:1 - 1':    '11_1',
   '1:1 - 2':    '11_2',
@@ -659,6 +659,7 @@ const AULAS_DEF = [
   {id:'a5',   bloco:2,    label:'Aula 5 — Marketing e Captação de Clientes',                 pre:false, pos:false, preName:'', posName:''},
   {id:'a6',   bloco:2,    label:'Aula 6 — Métricas Assertivas para um Consultório Crescer',  pre:true,  pos:true,  preName:'Material pré Aula 6', posName:'Material pós Aula 6'},
   {id:'a7',   bloco:2,    label:'Aula 7 — Cultura e Dinâmicas de Liderança',                 pre:false, pos:true,  preName:'', posName:'Material pós Aula 7'},
+  {id:'a8',   bloco:2,    label:'Aula 8 — Growth e Modelos de Negócio',                      pre:false, pos:false, preName:'', posName:''},
   {id:'a9',   bloco:2,    label:'Aula 9 — Planejamento',                                     pre:false, pos:false, preName:'', posName:''},
   {id:'11_1', bloco:'11', label:'1:1 — 1',                                                   pre:false, pos:false, preName:'', posName:''},
   {id:'11_2', bloco:'11', label:'1:1 — 2',                                                   pre:false, pos:false, preName:'', posName:''},
@@ -2990,7 +2991,7 @@ function attachEvents() {
           // Bruna avisa o grupo da turma sobre a pausa entre aula 4 e 5
           trigBruna('Avisar no grupo da '+tid+' sobre a pausa de 1 mês entre Aula 4 e 5');
         }
-        if(['a5','a6','a7','a9'].includes(aulaId)&&ok('a9')) trigT('Marcar 1:1 — 1 com '+(al?.nome||''));
+        if(['a5','a6','a7','a8','a9'].includes(aulaId)&&ok('a9')) trigT('Marcar 1:1 — 1 com '+(al?.nome||''));
         if(aulaId==='a10_1') trigT('Marcar 1:1 — 3 com '+(al?.nome||''));
         if(aulaId==='a10_2') trigT('Marcar 1:1 — 4 com '+(al?.nome||''));
       }
@@ -3061,7 +3062,7 @@ function attachEvents() {
           trigBruna('Avisar no grupo da '+tid+' sobre a pausa de 1 mês entre Aula 4 e 5');
         }
         // After Aula 9 → trigger 1:1-1
-        if (['a5','a6','a7','a9'].includes(aulaId) && marked('a9'))
+        if (['a5','a6','a7','a8','a9'].includes(aulaId) && marked('a9'))
           triggerTask('Marcar 1:1 — 1 com ' + (al?.nome||''));
         // After 1:1-1 done (tracked via reunioes) → 1:1-2 — handled separately
         // After Aula 10.1 → trigger 1:1-3
