@@ -468,8 +468,26 @@ function ensureOnboardingTasks() {
         addTarefa({titulo, responsavel:'bruna', alunoId:a.id, alunoNome:a.nome, prio:'alta',
                    descricao:'Novo médico cadastrado — enviar formulário de onboarding'});
       }
+      // Tarefa para o Ygor: designar um responsável ao médico novo (que entrou sem responsável)
+      const tituloResp = 'Designar responsável para ' + (a.nome||'').split(' ')[0];
+      const jaTemResp = state.tarefas.some(t => t.alunoId===a.id && t.titulo===tituloResp);
+      if (!jaTemResp) {
+        addTarefa({titulo:tituloResp, responsavel:'ygor', alunoId:a.id, alunoNome:a.nome, prio:'alta',
+                   descricao:'Novo médico cadastrado sem responsável — atribuir um consultor'});
+      }
     });
   } catch(e) { console.warn('ensureOnboardingTasks erro:', e.message); }
+}
+
+// Quando um responsável é atribuído a um médico, conclui a tarefa "Designar responsável" pendente
+function concluirTarefaDesignarResp(alunoId) {
+  try {
+    (state.tarefas||[]).forEach(t => {
+      if (t.alunoId===alunoId && !t.done && /^Designar responsável para /.test(t.titulo||'')) {
+        t.done = true;
+      }
+    });
+  } catch(e) { console.warn('concluirTarefaDesignarResp erro:', e.message); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1985,7 +2003,7 @@ function buildDetailOnboarding(a) {
   return `
   <div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-size:11.5px;color:var(--t4);display:flex;align-items:center;gap:6px">${a.onboardingFonte?`<span class="pill pill-gray" style="font-size:10px">${a.onboardingFonte}</span>`:''} Onboarding em cards</div>
+      <div style="font-size:11.5px;color:var(--t4)">Onboarding em cards</div>
       ${!state.obAdding ? `<button class="btn btn-primary btn-sm" data-ob-add>${I.plus} Adicionar card</button>` : ''}
     </div>
     ${addForm}
@@ -3085,7 +3103,7 @@ function attachEvents() {
   document.querySelectorAll('[data-quickedit-resp]').forEach(el => {
     el.addEventListener('change', () => {
       const a = state.alunos.find(x=>x.id===el.dataset.quickeditResp);
-      if (a) { a.responsavel = el.value; scheduleSave(); render(); }
+      if (a) { a.responsavel = el.value; if (el.value) concluirTarefaDesignarResp(a.id); scheduleSave(); render(); }
     });
   });
   document.querySelectorAll('[data-quickedit-status]').forEach(el => {
@@ -3972,6 +3990,7 @@ function salvarEdicaoAluno() {
   a.especialidade = g('ef-esp')||'';
   a.turma = g('ef-turma')||'';
   a.responsavel = g('ef-resp')||'';
+  if (a.responsavel) concluirTarefaDesignarResp(a.id);
   a.cidade = g('ef-cidade')||'';
   a.whatsapp = g('ef-wpp')||'';
   a.inicio = g('ef-inicio')||'';
