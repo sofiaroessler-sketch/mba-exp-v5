@@ -6194,35 +6194,44 @@ init();
 // KANBAN — Situação das Turmas
 // ═══════════════════════════════════════════════════════
 function buildKanbanPage() {
-  // Find the next undone aula for a turma
+  // Coluna da turma = aula seguinte à ÚLTIMA aula preenchida (não o primeiro buraco no meio)
   function getNextAula(tid) {
     const pTid = state.presenca[tid] || {};
     const alunos = getAlunosByTurma(tid);
     if (!alunos.length) return null;
-    for (const ad of getAulasDaTurma(tid)) {
+    const aulas = getAulasDaTurma(tid);
+
+    // helper: uma aula "tem marca" se algum aluno tem presença registrada nela
+    const temMarca = (ad) => {
       if (ad.bloco === '11') {
-        // 1:1s: only block if at least ONE aluno has a scheduled/done reuniao of this type
-        // i.e. they are actively in this 1:1 phase
-        const anyScheduled = alunos.some(a =>
-          (a.reunioes||[]).some(r => r.tipo === ad.label)
-        );
-        const allDone = alunos.every(a =>
-          (a.reunioes||[]).some(r => r.tipo === ad.label && r.realizada)
-        );
-        // Only show this column if some alunos have it scheduled/done
-        // If no one has it, skip (1:1s don't auto-block)
+        return alunos.some(a => (a.reunioes||[]).some(r => r.tipo === ad.label));
+      }
+      const pMap = pTid[ad.id] || {};
+      return alunos.some(a => pMap[a.id]);
+    };
+
+    // acha o índice da ÚLTIMA aula que tem marca
+    let ultimaComMarca = -1;
+    aulas.forEach((ad, i) => { if (temMarca(ad)) ultimaComMarca = i; });
+
+    // nenhuma aula preenchida ainda → próxima é a primeira aula de conteúdo
+    if (ultimaComMarca === -1) {
+      return aulas.find(ad => ad.bloco !== '11') || null;
+    }
+
+    // próxima aula = a primeira DEPOIS da última preenchida (pulando buracos no meio)
+    for (let i = ultimaComMarca + 1; i < aulas.length; i++) {
+      const ad = aulas[i];
+      if (ad.bloco === '11') {
+        // 1:1: só vira coluna se algum aluno já tem essa reunião agendada e nem todos concluíram
+        const anyScheduled = alunos.some(a => (a.reunioes||[]).some(r => r.tipo === ad.label));
+        const allDone = alunos.every(a => (a.reunioes||[]).some(r => r.tipo === ad.label && r.realizada));
         if (anyScheduled && !allDone) return ad;
         continue;
       }
-      // Regular aula: check presença marks
-      const pMap = pTid[ad.id] || {};
-      const hasAnyMark = alunos.some(a => pMap[a.id]);
-      const allDone = hasAnyMark && alunos.every(a => ['sim','sim2','nao','link'].includes(pMap[a.id]));
-      const hasNoMark = !hasAnyMark;
-      // Next aula = first one with no marks at all (not yet held)
-      if (hasNoMark) return ad;
+      return ad; // primeira aula de conteúdo após a última preenchida
     }
-    return null; // all aulas held
+    return null; // já passou da última aula → concluída
   }
 
   // Map each turma to its next aula id
