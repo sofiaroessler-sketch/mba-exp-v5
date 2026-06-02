@@ -1815,7 +1815,7 @@ function buildTarefaItem(t, done) {
         ${t.alunoNome ? `<span style="color:var(--brand-h);cursor:pointer" data-open-aluno="${t.alunoId}" data-open-tab="reunioes">${t.alunoNome}</span> — ` : ''}${t.titulo}
       </div>
       <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
-        ${t.prazo ? `<span style="font-size:11.5px;color:${t.prazo<=now()?'var(--red-t)':t.prazo<=addDays(now(),3)?'var(--amber-t)':'var(--t4)'}">${I.cal} ${fmt(t.prazo)}${t.hora?' · '+t.hora:''}${t.prazo<=now()?' !':''}` + '</span>' : ''}
+        ${t.prazo ? `<span style="font-size:11.5px;color:${t.prazo<=now()?'var(--red-t)':t.prazo<=addDays(now(),3)?'var(--amber-t)':'var(--t4)'}">${fmt(t.prazo)}${t.hora?' · '+t.hora:''}${t.prazo<=now()?' · vencida':''}` + '</span>' : ''}
         ${t.colab && t.colab!==state.user?.id ? `<span style="font-size:11.5px;color:var(--brand-h)">👥 Conjunto com ${PROFILES.find(p=>p.id===t.colab)?.name||t.colab}</span>` : ''}
         ${t.responsavel!==state.user?.id ? `<span style="font-size:11.5px;color:var(--amber-t)">↩ de ${PROFILES.find(p=>p.id===t.responsavel)?.name||t.responsavel}</span>` : ''}
         ${t.prio ? `<span style="font-size:11px;color:${prioColor}">${t.prio}</span>` : ''}
