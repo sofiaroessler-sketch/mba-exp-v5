@@ -4977,17 +4977,29 @@ function buildModalNovoUsuario() {
 
 function buildModalEditTurma(t) {
   const datas = state.aulasDates[t.id] || {};
-  const linhasAulas = getAulasDaTurma(t.id).map(ad => {
+  const aulasT = getAulasDaTurma(t.id);
+  // ponto de corte: Etapa 1 vai até a "Aula 9" (id a9) inclusive; depois é Etapa 2.
+  let idxCorte = aulasT.findIndex(ad => ad.id === 'a9');
+  if (idxCorte === -1) idxCorte = aulasT.length - 1; // se a turma não tem a9, joga tudo na Etapa 1
+
+  const linhaAula = (ad) => {
     const info = datas[ad.id] || {};
-    // conta presença marcada nessa aula nesta turma (aviso ao remover)
-    const temPresenca = (state.presenca[t.id]||{})[ad.id] && Object.keys((state.presenca[t.id]||{})[ad.id]).length > 0;
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
       <input class="inp" id="et-label-${ad.id}" value="${(ad.label||'').replace(/"/g,'&quot;')}" style="flex:1;min-width:120px;padding:6px 8px;font-size:12.5px" title="Nome da aula nesta turma">
       <input class="inp" type="date" id="et-data-${ad.id}" value="${info.data||''}" style="width:150px;padding:6px 8px">
       <button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-remover-aula-turma="${ad.id}" data-turma-id="${t.id}" title="Remover esta aula da turma">${I.trash}</button>
     </div>`;
-  }).join('');
+  };
+
+  const etapa1 = aulasT.slice(0, idxCorte + 1).map(linhaAula).join('');
+  const etapa2 = aulasT.slice(idxCorte + 1).map(linhaAula).join('');
+
+  const linhasAulas = `
+    <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--brand-h);margin:2px 0 4px">Etapa 1 — Aulas 1 a 9</div>
+    ${etapa1}
+    ${etapa2 ? `<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--brand-h);margin:14px 0 4px">Etapa 2 — 1:1 e aulas seguintes</div>${etapa2}` : ''}
+  `;
 
   // aulas removidas desta turma (para restaurar)
   const removidas = (t.aulasRemovidas||[]).map(id => {
