@@ -3542,6 +3542,14 @@ function attachEvents() {
     });
   });
 
+  document.querySelector('[data-cal-today]')?.addEventListener('click', () => {
+    const hoje = new Date();
+    state.calMonth = hoje.getMonth();
+    state.calYear  = hoje.getFullYear();
+    state.calWeek  = 0;
+    render();
+  });
+
   document.querySelectorAll('[data-cal-view]').forEach(el => {
     el.addEventListener('click', () => {
       state.calView = el.dataset.calView;
@@ -4509,6 +4517,7 @@ function buildCalendarioPage() {
           <button class="btn btn-ghost btn-sm" data-cal-nav="-1">${I.back}</button>
           <span style="font-family:var(--fh);font-weight:600;font-size:15px;color:var(--t1);min-width:140px;text-align:center">${monthNames[month]} ${year}</span>
           <button class="btn btn-ghost btn-sm" data-cal-nav="1">›</button>
+          <button class="btn btn-ghost btn-sm" data-cal-today title="Ir para o mês atual">Hoje</button>
         </div>
 
         <!-- View toggle -->
@@ -5159,7 +5168,13 @@ function salvarEditTurma(el) {
 function recalcularCronograma(tid) {
   const t = state.turmas.find(x=>x.id===tid);
   if (!t) return;
-  const inicio = document.getElementById('et-inicio')?.value || t.inicio || now();
+  const inicio = document.getElementById('et-inicio')?.value || t.inicio || '';
+  // sem data de início válida não dá pra calcular — avisa em vez de zerar tudo
+  if (!inicio || !/^\d{4}-\d{2}-\d{2}$/.test(inicio)) {
+    showToast('Preencha o campo "Início" primeiro para recalcular', 'err');
+    return;
+  }
+  if (!confirm('Isso vai reagendar TODAS as aulas a cada 14 dias a partir do início, substituindo as datas atuais. Continuar?')) return;
   const aulaOrder = getAulasDaTurma(tid).filter(a=>a.bloco!=='11');
   aulaOrder.forEach((ad, i) => {
     const novaData = addDays(inicio, i * 14);
