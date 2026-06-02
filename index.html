@@ -3027,9 +3027,11 @@ function attachEvents() {
   document.getElementById('modal-overlay')?.addEventListener('click', () => { state.modal = null; render(); });
 
   // Close panel
-  document.querySelector('[data-close-panel]')?.addEventListener('click', () => {
-    state.selAluno = null; state.editandoAluno = false; state.notaEditId = null; render();
-  });
+  document.querySelectorAll('[data-close-panel]').forEach(el => el.addEventListener('click', () => {
+    state.selAluno = null; state.editandoAluno = false; state.notaEditId = null;
+    state.obAdding = false; state.obEditId = null; state.rnotaAdding = false; state.rnotaEditId = null;
+    render();
+  }));
 
   // Notas em blocos
   document.querySelector('[data-nota-add]')?.addEventListener('click', () => adicionarNota());
