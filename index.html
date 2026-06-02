@@ -1935,31 +1935,61 @@ function buildDetailPanel() {
 }
 
 function buildDetailOnboarding(a) {
-  const cards = a.onboardingCards || [];
-  if (!cards.length) {
-    return `<div class="empty-state" style="padding:40px 0;text-align:center"><p style="color:var(--t4)">Nenhum dado de onboarding registrado para este médico.</p></div>`;
-  }
-  const fonte = a.onboardingFonte || '';
-  // ícones por tipo de seção
+  if (!Array.isArray(a.onboardingCards)) a.onboardingCards = [];
+  const cards = a.onboardingCards;
+  const editId = state.obEditId; // card em edição
   const ico = (t)=> /mapeados/i.test(t) && !/n[ãa]o/i.test(t) ? '✅'
     : /n[ãa]o mapeados/i.test(t) ? '🚧'
     : /dados/i.test(t) ? '👤'
     : /situa/i.test(t) ? '💼'
     : /v[íi]nculo/i.test(t) ? '🔗'
     : /resumo/i.test(t) ? '📋' : '📌';
+
+  const addForm = state.obAdding ? `
+    <div style="border:1px solid var(--brand-h);border-radius:var(--r2);background:var(--bg-s);padding:14px 16px;margin-bottom:14px">
+      <div class="field" style="margin-bottom:8px"><label class="lbl">Título</label><input class="inp" id="ob-new-titulo" placeholder="Ex: Observações" style="padding:7px 10px"></div>
+      <textarea class="note-area" id="ob-new-conteudo" placeholder="Conteúdo do card..." style="min-height:90px"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-primary btn-sm" data-ob-save-new data-aluno-id="${a.id}">Salvar</button>
+        <button class="btn btn-ghost btn-sm" data-ob-cancel-new>Cancelar</button>
+      </div>
+    </div>` : '';
+
+  const cardsHtml = cards.length === 0 && !state.obAdding
+    ? `<div class="empty-state" style="padding:30px 0;text-align:center"><p style="color:var(--t4)">Nenhum card de onboarding ainda.</p></div>`
+    : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
+        ${cards.map(c=>{
+          if (editId === c.id) {
+            return `
+            <div style="border:1px solid var(--brand-h);border-radius:var(--r2);background:var(--bg-s);padding:13px 16px">
+              <input class="inp" id="ob-edit-titulo-${c.id}" value="${(c.titulo||'').replace(/"/g,'&quot;')}" style="padding:6px 10px;margin-bottom:8px;font-weight:600">
+              <textarea class="note-area" id="ob-edit-conteudo-${c.id}" style="min-height:120px">${(c.conteudo||'').replace(/</g,'&lt;')}</textarea>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn btn-primary btn-xs" data-ob-save-edit="${c.id}" data-aluno-id="${a.id}">Salvar</button>
+                <button class="btn btn-ghost btn-xs" data-ob-cancel-edit>Cancelar</button>
+              </div>
+            </div>`;
+          }
+          return `
+          <div style="border:1px solid var(--border);border-radius:var(--r2);background:var(--bg-s);overflow:hidden">
+            <div style="padding:11px 16px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--t1);display:flex;align-items:center;gap:8px">
+              <span>${ico(c.titulo)}</span> <span style="flex:1">${c.titulo}</span>
+              <button class="btn-icon" style="width:24px;height:24px" data-ob-edit="${c.id}" title="Editar">${I.edit}</button>
+              <button class="btn-icon" style="width:24px;height:24px;color:var(--red-t)" data-ob-del="${c.id}" data-aluno-id="${a.id}" title="Excluir">${I.trash}</button>
+            </div>
+            <div style="padding:13px 16px;font-size:12.5px;color:var(--t2);line-height:1.65;white-space:pre-wrap">${(c.conteudo||'').replace(/</g,'&lt;')}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
   return `
   <div>
-    ${fonte ? `<div style="font-size:11.5px;color:var(--t4);margin-bottom:14px;display:flex;align-items:center;gap:6px"><span class="pill pill-gray" style="font-size:10px">${fonte}</span> Síntese do formulário de onboarding</div>` : ''}
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">
-      ${cards.map(c=>`
-        <div style="border:1px solid var(--border);border-radius:var(--r2);background:var(--bg-s);overflow:hidden">
-          <div style="padding:11px 16px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--t1);display:flex;align-items:center;gap:8px">
-            <span>${ico(c.titulo)}</span> ${c.titulo}
-          </div>
-          <div style="padding:13px 16px;font-size:12.5px;color:var(--t2);line-height:1.65;white-space:pre-wrap">${(c.conteudo||'').replace(/</g,'&lt;')}</div>
-        </div>
-      `).join('')}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:11.5px;color:var(--t4);display:flex;align-items:center;gap:6px">${a.onboardingFonte?`<span class="pill pill-gray" style="font-size:10px">${a.onboardingFonte}</span>`:''} Onboarding em cards</div>
+      ${!state.obAdding ? `<button class="btn btn-primary btn-sm" data-ob-add>${I.plus} Adicionar card</button>` : ''}
     </div>
+    ${addForm}
+    ${cardsHtml}
   </div>`;
 }
 
@@ -2166,8 +2196,54 @@ function buildDetailReunioes(a) {
     ` : ''}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="section-title" style="margin:0">Reuniões</div>
-      <button class="btn btn-primary btn-sm" data-action="nova-reuniao">${I.plus} Agendar Reunião</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" data-rnota-add>${I.plus} Anotação</button>
+        <button class="btn btn-primary btn-sm" data-action="nova-reuniao">${I.plus} Agendar Reunião</button>
+      </div>
     </div>
+
+    ${(() => {
+      // Anotações avulsas de reunião (cardzinhos com data + autor)
+      if (!Array.isArray(a.reuniaoNotas)) a.reuniaoNotas = [];
+      const editId = state.rnotaEditId;
+      const addForm = state.rnotaAdding ? `
+        <div style="border:1px solid var(--brand-h);border-radius:var(--r2);background:var(--bg-s);padding:13px 16px;margin-bottom:12px">
+          <div class="field" style="margin-bottom:8px"><label class="lbl">Data</label><input class="inp" id="rnota-new-data" placeholder="ex: 28/05/2026" style="padding:6px 10px"></div>
+          <textarea class="note-area" id="rnota-new-texto" placeholder="Anotação da reunião..." style="min-height:80px"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary btn-sm" data-rnota-save-new data-aluno-id="${a.id}">Salvar</button>
+            <button class="btn btn-ghost btn-sm" data-rnota-cancel-new>Cancelar</button>
+          </div>
+        </div>` : '';
+      const lista = a.reuniaoNotas.slice().reverse().map(n=>{
+        if (editId===n.id) {
+          return `
+          <div style="border:1px solid var(--brand-h);border-radius:var(--r2);background:var(--bg-s);padding:12px 16px;margin-bottom:10px">
+            <input class="inp" id="rnota-edit-data-${n.id}" value="${(n.data||'').replace(/"/g,'&quot;')}" placeholder="data" style="padding:6px 10px;margin-bottom:8px">
+            <textarea class="note-area" id="rnota-edit-texto-${n.id}" style="min-height:80px">${(n.texto||'').replace(/</g,'&lt;')}</textarea>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn btn-primary btn-xs" data-rnota-save-edit="${n.id}" data-aluno-id="${a.id}">Salvar</button>
+              <button class="btn btn-ghost btn-xs" data-rnota-cancel-edit>Cancelar</button>
+            </div>
+          </div>`;
+        }
+        const ehDono = n.autorId && n.autorId === state.user?.id;
+        return `
+        <div style="border:1px solid var(--border);border-radius:var(--r2);background:var(--bg-t);padding:12px 16px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:22px;height:22px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:var(--brand-h)">${(n.autorNome||'—').charAt(0)}</div>
+              <span style="font-size:12px;font-weight:600;color:var(--t1)">${n.autorNome||'—'}</span>
+              ${n.data?`<span style="font-size:11px;color:var(--t4)">· ${n.data}</span>`:''}
+            </div>
+            ${ehDono?`<div style="display:flex;gap:4px"><button class="btn-icon" style="width:22px;height:22px" data-rnota-edit="${n.id}">${I.edit}</button><button class="btn-icon" style="width:22px;height:22px;color:var(--red-t)" data-rnota-del="${n.id}" data-aluno-id="${a.id}">${I.trash}</button></div>`:''}
+          </div>
+          <div style="font-size:12.5px;color:var(--t2);line-height:1.6;white-space:pre-wrap">${(n.texto||'').replace(/</g,'&lt;')}</div>
+        </div>`;
+      }).join('');
+      return (addForm || lista) ? `<div style="margin-bottom:18px">${addForm}${lista}</div>` : '';
+    })()}
+
     ${(() => {
       const visivel = reunioes;
       return visivel.length===0
@@ -2967,6 +3043,24 @@ function attachEvents() {
   document.querySelectorAll('[data-nota-comentar]').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); comentarNota(el.dataset.notaComentar); });
   });
+
+  // Cards de Onboarding
+  document.querySelector('[data-ob-add]')?.addEventListener('click', e => { e.stopPropagation(); obAddStart(); });
+  document.querySelector('[data-ob-cancel-new]')?.addEventListener('click', e => { e.stopPropagation(); obAddCancel(); });
+  document.querySelector('[data-ob-save-new]')?.addEventListener('click', e => { e.stopPropagation(); obAddSave(); });
+  document.querySelector('[data-ob-cancel-edit]')?.addEventListener('click', e => { e.stopPropagation(); obEditCancel(); });
+  document.querySelectorAll('[data-ob-edit]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); obEdit(el.dataset.obEdit); }));
+  document.querySelectorAll('[data-ob-save-edit]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); obEditSave(el.dataset.obSaveEdit); }));
+  document.querySelectorAll('[data-ob-del]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); obDel(el.dataset.obDel); }));
+
+  // Anotações avulsas de reunião
+  document.querySelector('[data-rnota-add]')?.addEventListener('click', e => { e.stopPropagation(); rnotaAddStart(); });
+  document.querySelector('[data-rnota-cancel-new]')?.addEventListener('click', e => { e.stopPropagation(); rnotaAddCancel(); });
+  document.querySelector('[data-rnota-save-new]')?.addEventListener('click', e => { e.stopPropagation(); rnotaAddSave(); });
+  document.querySelector('[data-rnota-cancel-edit]')?.addEventListener('click', e => { e.stopPropagation(); rnotaEditCancel(); });
+  document.querySelectorAll('[data-rnota-edit]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); rnotaEdit(el.dataset.rnotaEdit); }));
+  document.querySelectorAll('[data-rnota-save-edit]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); rnotaEditSave(el.dataset.rnotaSaveEdit); }));
+  document.querySelectorAll('[data-rnota-del]').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); rnotaDel(el.dataset.rnotaDel); }));
 
   // Open aluno panel
   document.querySelectorAll('[data-open-aluno]').forEach(el => {
@@ -3967,6 +4061,69 @@ function comentarNota(notaId) {
   render();
 }
 
+// ── Cards de Onboarding (editáveis) ──
+function obAddStart()  { state.obAdding = true; state.obEditId = null; render(); }
+function obAddCancel() { state.obAdding = false; render(); }
+function obAddSave() {
+  const a = _getAluno(); if (!a) return;
+  if (!Array.isArray(a.onboardingCards)) a.onboardingCards = [];
+  const titulo = document.getElementById('ob-new-titulo')?.value.trim() || 'Sem título';
+  const conteudo = document.getElementById('ob-new-conteudo')?.value.trim() || '';
+  if (!conteudo) return showToast('Escreva o conteúdo', 'err');
+  a.onboardingCards.push({ id:'ob_'+Date.now()+Math.random().toString(36).slice(2,5), titulo, conteudo });
+  state.obAdding = false;
+  showToast('Card adicionado'); scheduleSave(); render();
+}
+function obEdit(id)   { state.obEditId = id; state.obAdding = false; render(); }
+function obEditCancel(){ state.obEditId = null; render(); }
+function obEditSave(id) {
+  const a = _getAluno(); if (!a) return;
+  const c = (a.onboardingCards||[]).find(x=>x.id===id); if (!c) return;
+  c.titulo = document.getElementById('ob-edit-titulo-'+id)?.value.trim() || c.titulo;
+  c.conteudo = document.getElementById('ob-edit-conteudo-'+id)?.value ?? c.conteudo;
+  state.obEditId = null;
+  showToast('Card atualizado'); scheduleSave(); render();
+}
+function obDel(id) {
+  const a = _getAluno(); if (!a) return;
+  if (!confirm('Excluir este card?')) return;
+  a.onboardingCards = (a.onboardingCards||[]).filter(x=>x.id!==id);
+  showToast('Card excluído'); scheduleSave(); render();
+}
+
+// ── Anotações avulsas de reunião (cardzinho com data + autor) ──
+function rnotaAddStart()  { state.rnotaAdding = true; state.rnotaEditId = null; render(); }
+function rnotaAddCancel() { state.rnotaAdding = false; render(); }
+function rnotaAddSave() {
+  const a = _getAluno(); if (!a) return;
+  if (!Array.isArray(a.reuniaoNotas)) a.reuniaoNotas = [];
+  const texto = document.getElementById('rnota-new-texto')?.value.trim();
+  const data  = document.getElementById('rnota-new-data')?.value.trim() || '';
+  if (!texto) return showToast('Escreva a anotação', 'err');
+  a.reuniaoNotas.push({
+    id:'rn_'+Date.now()+Math.random().toString(36).slice(2,5),
+    autorId: state.user?.id || '', autorNome: state.user?.name || '—',
+    data, texto
+  });
+  state.rnotaAdding = false;
+  showToast('Anotação adicionada'); scheduleSave(); render();
+}
+function rnotaEdit(id)    { state.rnotaEditId = id; state.rnotaAdding = false; render(); }
+function rnotaEditCancel(){ state.rnotaEditId = null; render(); }
+function rnotaEditSave(id) {
+  const a = _getAluno(); if (!a) return;
+  const n = (a.reuniaoNotas||[]).find(x=>x.id===id); if (!n) return;
+  n.data  = document.getElementById('rnota-edit-data-'+id)?.value.trim() ?? n.data;
+  n.texto = document.getElementById('rnota-edit-texto-'+id)?.value ?? n.texto;
+  state.rnotaEditId = null;
+  showToast('Anotação atualizada'); scheduleSave(); render();
+}
+function rnotaDel(id) {
+  const a = _getAluno(); if (!a) return;
+  if (!confirm('Excluir esta anotação?')) return;
+  a.reuniaoNotas = (a.reuniaoNotas||[]).filter(x=>x.id!==id);
+  showToast('Anotação excluída'); scheduleSave(); render();
+}
 
 function delReuniao(reuniaoId, alunoId) {
   if (!confirm('Apagar esta reunião permanentemente?')) return;
