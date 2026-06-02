@@ -2209,6 +2209,32 @@ function buildDetailInfo(a) {
     <div class="section-title">Planilhas</div>
     ${a.link_fin ? `<div class="kv"><span class="kv-k">Financeira</span><a href="${a.link_fin}" target="_blank" style="color:var(--brand-h)">${I.link} Abrir</a></div>` : `<div class="kv"><span class="kv-k">Financeira</span><span style="color:var(--red-t)">Não preenchido</span></div>`}
     ${a.link_leads ? `<div class="kv"><span class="kv-k">Leads</span><a href="${a.link_leads}" target="_blank" style="color:var(--brand-h)">${I.link} Abrir</a></div>` : `<div class="kv"><span class="kv-k">Leads</span><span style="color:var(--red-t)">Não preenchido</span></div>`}
+
+    ${(() => {
+      // Card "Informações fornecidas no pré-onboarding" (raio-x do consultório, vindo do Typeform)
+      const linhas = [
+        ['Instagram', a.instagram],
+        ['Turnos no consultório', a.turnos],
+        ['Média de atendimentos/mês', a.media_atend],
+        ['Preço da consulta', a.preco_consulta],
+        ['Realiza procedimentos?', a.realiza_proc],
+        ['Quais / receita', a.desc_proc],
+        ['Atende convênios?', a.convenios],
+        ['Atend. e valor por convênio', a.desc_conv],
+        ['Outros vínculos', a.outros_vinculos],
+      ].filter(([k,v]) => v && String(v).trim());
+      if (!linhas.length) return '';
+      return `
+      <div class="divider"></div>
+      <div style="border:1px solid var(--border);border-radius:var(--r2);background:var(--bg-s);overflow:hidden;margin-top:4px">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--t1);display:flex;align-items:center;gap:7px">
+          <span>📋</span> Informações fornecidas no pré-onboarding
+        </div>
+        <div style="padding:6px 14px 10px">
+          ${linhas.map(([k,v])=>`<div class="kv"><span class="kv-k">${k}</span><span class="kv-v" style="white-space:pre-wrap">${String(v).replace(/</g,'&lt;')}</span></div>`).join('')}
+        </div>
+      </div>`;
+    })()}
   </div>`;
 }
 
