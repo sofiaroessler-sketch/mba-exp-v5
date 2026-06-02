@@ -990,11 +990,42 @@ function showToast(msg, type='ok') {
   setTimeout(()=>{state.toast=null; renderToast();}, 3000);
 }
 
+// Define o prazo (em dias a partir de hoje) conforme o tipo de tarefa, pelo título.
+// Só se aplica quando a tarefa não foi criada com um prazo explícito.
+function prazoPorTitulo(t) {
+  const tit = (t.titulo || '').toLowerCase();
+  // dias a partir de hoje para cada tipo
+  let dias = null;
+  if (t.tipo === 'enviar-link' || /enviar link/.test(tit))                 dias = 2;   // link → 2 dias
+  else if (t.tipo === 'cobrar-video' || /cobrar v[íi]deo|viu a aula|aula online/.test(tit)) dias = 7; // cobrar vídeo → 1 semana
+  else if (/^designar respons[áa]vel/.test(tit))                            dias = 10;  // designar responsável → 10 dias
+  else if (/mandar forms de onboarding|forms de onboarding/.test(tit))      dias = 3;   // enviar forms → 3 dias
+  else if (/marcar 1:1|marcar treinamento da secret/.test(tit))             dias = 3;   // qualquer 1:1 e treinamento secretária → 3 dias
+  else if (/marcar reuni[ãa]o/.test(tit))                                    dias = 3;   // reunião individual / onboarding / fin-leads → 3 dias
+  if (dias === null) return undefined;
+  return addDays(now(), dias);
+}
+
 function addTarefa(t) {
   t.id = 'tk_' + Date.now() + Math.random().toString(36).slice(2,6);
   t.done = false;
   t.criada = now();
+  // se não veio com prazo, aplica o prazo padrão pelo tipo de tarefa
+  if (!t.prazo) {
+    const p = prazoPorTitulo(t);
+    if (p) t.prazo = p;
+  }
   state.tarefas.push(t);
+}
+
+// Adia o prazo da tarefa: define novo prazo a partir de HOJE + N dias
+function adiarTarefa(taskId, dias) {
+  const t = state.tarefas.find(x=>x.id===taskId);
+  if (!t) return;
+  t.prazo = addDays(now(), parseInt(dias));
+  showToast(`Tarefa adiada para ${fmt(t.prazo)}`);
+  scheduleSave();
+  render();
 }
 
 function getMinhasTarefas() {
@@ -1206,6 +1237,12 @@ function buildSidebar() {
   const minhas = getMinhasTarefas().filter(t=>!t.done).length;
   const novosMedicos = state.alunos.filter(a => a.status==='ativo' && !a.responsavel).length;
   const semSenha = isYgor() ? state.profiles.filter(p => p.id !== 'admin' && !p.hasPassword).length : 0;
+  // tarefas do usuário não concluídas, com prazo, que vencem em até 2 dias ou já passaram
+  const hojeStr = new Date().toISOString().slice(0,10);
+  const limiteStr = addDays(hojeStr, 2);
+  const tarefasVencendo = getMinhasTarefas().filter(t => !t.done && t.prazo && t.prazo <= limiteStr);
+  const nVencendo = tarefasVencendo.length;
+  const nAtrasadas = tarefasVencendo.filter(t => t.prazo < hojeStr).length;
   const isAdminOnly = u.id === 'admin';
   const nav = isAdminOnly ? [
     {id:'admin', label:'Admin', icon:I.adminIcon},
@@ -1233,6 +1270,11 @@ function buildSidebar() {
         </div>
       `).join('')}
     </div>
+    ${nVencendo > 0 ? `
+    <div style="margin:0 12px 8px;padding:10px 12px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2);cursor:pointer" data-nav="tarefas">
+      <div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:3px">⏰ ${nVencendo} tarefa${nVencendo>1?'s':''} ${nAtrasadas>0?(nAtrasadas===nVencendo?'atrasada'+(nVencendo>1?'s':''):'urgente'+(nVencendo>1?'s':'')):'vencendo'}</div>
+      <div style="font-size:11px;color:var(--t4)">${nAtrasadas>0?`${nAtrasadas} já vencida${nAtrasadas>1?'s':''} · `:''}Vence em até 2 dias</div>
+    </div>` : ''}
     ${(isYgor()||isBruna()) && novosMedicos > 0 ? `
     <div style="margin:0 12px;padding:10px 12px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2);cursor:pointer" data-nav="medicos" data-set-filtro="novos">
       <div style="font-size:11px;font-weight:600;color:var(--amber-t);margin-bottom:3px">🔔 ${novosMedicos} novo${novosMedicos>1?'s':''} médico${novosMedicos>1?'s':''}</div>
@@ -1779,6 +1821,13 @@ function buildTarefaItem(t, done) {
         ${t.prio ? `<span style="font-size:11px;color:${prioColor}">${t.prio}</span>` : ''}
       </div>
       ${t.descricao ? `<div style="font-size:12px;color:var(--t4);margin-top:4px">${t.descricao}</div>` : ''}
+      ${!done ? `
+      <div style="display:flex;gap:5px;margin-top:7px;align-items:center">
+        <span style="font-size:10.5px;color:var(--t4)">Adiar:</span>
+        <button class="btn btn-ghost btn-xs" data-adiar-task="${t.id}" data-adiar-dias="1">+1 dia</button>
+        <button class="btn btn-ghost btn-xs" data-adiar-task="${t.id}" data-adiar-dias="3">+3 dias</button>
+        <button class="btn btn-ghost btn-xs" data-adiar-task="${t.id}" data-adiar-dias="7">+1 semana</button>
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -3207,6 +3256,13 @@ function attachEvents() {
   });
 
   // Toggle task
+  document.querySelectorAll('[data-adiar-task]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      adiarTarefa(el.dataset.adiarTask, el.dataset.adiarDias);
+    });
+  });
+
   document.querySelectorAll('[data-toggle-task]').forEach(el => {
     el.addEventListener('click', () => {
       const t = state.tarefas.find(x=>x.id===el.dataset.toggleTask);
@@ -3856,7 +3912,7 @@ function salvarMedico() {
   };
   state.alunos.push(novo);
   // Trigger task for Bruna — mandar forms de onboarding (cadeia segue após forms recebido)
-  const prazoForms = addDays(now(), 5);
+  const prazoForms = addDays(now(), 3);
   addTarefa({titulo:'Mandar forms de onboarding para ' + nome.split(' ')[0], responsavel:'bruna', alunoId:novo.id, alunoNome:nome, prio:'alta', prazo:prazoForms, descricao:'Novo médico cadastrado — enviar formulário de onboarding'});
   state.modal = null;
   showToast(`${nome} cadastrado`);
