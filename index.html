@@ -1607,6 +1607,8 @@ function buildCronograma(t, alunos) {
   function shouldExpand(idx, ad) {
     // Manually toggled always wins
     if (state.expandedAulas[expandedKey][ad.id]) return true;
+    // Se a aula foi aberta via botão "Abrir presenças", manter expandida
+    if ((state.aulaAberta||{})[t.id+ad.id]) return true;
     // If all done, nothing auto-expands (only manual)
     if (nextIdx === -1) return false;
     // Auto-expand the next undone item
