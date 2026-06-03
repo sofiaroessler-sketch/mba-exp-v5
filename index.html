@@ -887,6 +887,7 @@ let state = {
   editForm: {},
   expandedAulas: {},
   turmasAntigasSel: null,
+  _undoStack: [], // snapshots de presença para undo
   linkEnviado: {},  // {tid:{aulaId:{alunoId:bool}}} — separate from presença state
   aulaAberta: {},
   showConcluidas: false,
@@ -1462,6 +1463,27 @@ function buildTurmaDetail() {
 
 
 // Retorna array de 12 meses {ano, mes(0-11), label} a partir do início da turma do médico
+// Salva snapshot de presença antes de mudança (para undo)
+function pushUndo() {
+  const snap = JSON.stringify(state.presenca);
+  state._undoStack = state._undoStack || [];
+  state._undoStack.push(snap);
+  if (state._undoStack.length > 20) state._undoStack.shift(); // máx 20 passos
+}
+
+function undoPresenca() {
+  if (!state._undoStack || !state._undoStack.length) {
+    showToast('Nada para desfazer', 'err');
+    return;
+  }
+  state.presenca = JSON.parse(state._undoStack.pop());
+  // Recalcular taxa de todos os alunos
+  state.turmas.forEach(t => recalcTaxaPresenca(t.id));
+  scheduleSave();
+  render();
+  showToast('Presença desfeita ✓');
+}
+
 function getMesesPlanilha(aluno) {
   const INICIOS_TURMA = {
     T1:'2025-04-16', T2:'2025-06-10', T3:'2025-07-28',
@@ -1889,6 +1911,7 @@ function buildTarefaItem(t, done) {
         <button class="btn btn-ghost btn-xs" data-adiar-task="${t.id}" data-adiar-dias="7">+1 semana</button>
       </div>` : ''}
     </div>
+    <button class="btn-icon" data-del-tarefa="${t.id}" title="Excluir tarefa" style="flex-shrink:0;color:var(--t4);opacity:.5;width:24px;height:24px">${I.trash}</button>
   </div>`;
 }
 
@@ -1985,7 +2008,7 @@ function buildMedicosPage() {
         <div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase">Nome</div>
         <div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase">Turma</div>
         <div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase">Resp. Médico</div>
-        <div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase">Resp. Eng.</div>
+        <div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase">Resp. Consultor</div>
         <div style="font-size:11px;font-weight:700;color:var(--t3);letter-spacing:.8px;text-transform:uppercase">Presença</div>
       </div>` : ''}
       ${lista.length === 0 ? `<div class="empty-state">${I.medicos}<p>Nenhum médico encontrado</p></div>` : ''}
@@ -2001,7 +2024,6 @@ function buildMedicoCard(a, clickable=true) {
   // Find médico interno responsável (from reunioes)
   const reuIndiv = (a.reunioes||[]).find(r=>r.tipo==='Reunião Individual'||r.tipo==='Reunião de Onboarding');
   const medInt = reuIndiv?.responsavelId ? (PROFILES.find(p=>p.id===reuIndiv.responsavelId)?.name||'') : '';
-  // Responsável engenheiro = a.responsavel
   const respEng = a.responsavel||'—';
   return `
   <div class="card ${clickable?'card-click':''}" style="margin-bottom:6px;padding:12px 16px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;align-items:center;gap:12px" ${clickable?`data-open-aluno="${a.id}"`:''}">
@@ -3285,6 +3307,7 @@ function attachEvents() {
 
   // ESC fecha o perfil do médico ou o modal
   document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoPresenca(); return; }
     if (e.key !== 'Escape') return;
     if (state.modal) { state.modal = null; render(); return; }
     if (state.selAluno) {
@@ -3457,6 +3480,16 @@ function attachEvents() {
     });
   });
 
+  document.querySelectorAll('[data-del-tarefa]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = el.dataset.delTarefa;
+      state.tarefas = state.tarefas.filter(t => t.id !== id);
+      scheduleSave();
+      render();
+    });
+  });
+
   document.querySelectorAll('[data-toggle-task]').forEach(el => {
     el.addEventListener('click', () => {
       const t = state.tarefas.find(x=>x.id===el.dataset.toggleTask);
@@ -3521,6 +3554,7 @@ function attachEvents() {
       if(!state.presenca[tid][aulaId]) state.presenca[tid][aulaId]={};
       const cur = state.presenca[tid][aulaId][alunoId];
       const next = (!cur||cur==='nao'||cur==='link') ? 'sim' : cur==='sim' ? 'sim2' : null;
+      pushUndo();
       if(next) state.presenca[tid][aulaId][alunoId]=next;
       else delete state.presenca[tid][aulaId][alunoId];
       scheduleSave();
@@ -3552,8 +3586,8 @@ function attachEvents() {
       }
       // Trigger 1:1 alerts (sim and sim2 both count)
       const al=state.alunos.find(a=>a.id===alunoId);
-      const respId=PROFILES.find(p=>p.name===al?.responsavel)?.id||'otavio';
-      const trigT=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.alunoId===alunoId&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:respId,alunoId,alunoNome:al?.nome,prio:'alta'}); };
+      const respId=PROFILES.find(p=>p.name===al?.responsavel)?.id||null;
+      const trigT=(titulo)=>{ if(!respId) return; const ex=state.tarefas.some(t=>!t.done&&t.alunoId===alunoId&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:respId,alunoId,alunoNome:al?.nome,prio:'alta'}); };
       // alerta para a Bruna, por turma (não duplica por turma)
       const trigBruna=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.responsavel==='bruna'&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:'bruna',prio:'alta'}); };
       if(next==='sim'||next==='sim2'||next==='nao'||next==='link'){
@@ -3569,15 +3603,22 @@ function attachEvents() {
         if(aulaId==='a10_1') trigT('Marcar 1:1 — 3 com '+(al?.nome||''));
         if(aulaId==='a10_2') trigT('Marcar 1:1 — 4 com '+(al?.nome||''));
       }
-      // Reset → remover tarefas de 1:1/secretária relacionadas ao aluno
-      if(next==='reset'||next===undefined||next===null){
+      // Reset → recalcular se gatilhos ainda são válidos após deleção
+      if(next===null||next===undefined){
+        const pTidAfter = state.presenca[tid]||{};
+        const okAfter=(id)=>{const v=(pTidAfter[id]||{})[alunoId];return v==='sim'||v==='sim2'||v==='link'||v==='nao';};
+        // Remover tarefas cujo gatilho não é mais satisfeito
         const nomeAl=al?.nome||'';
-        state.tarefas.forEach(t=>{
-          if(t.alunoId===alunoId && (
-            t.titulo.startsWith('Marcar 1:1') ||
-            t.titulo.startsWith('Marcar Treinamento da Secretária')
-          )) t.done=true;
-        });
+        const gate2 = okAfter('a2');
+        const gate4 = okAfter('a4');
+        const gate9 = okAfter('a9');
+        const gate10_1 = okAfter('a10_1');
+        const gate10_2 = okAfter('a10_2');
+        if(!gate2) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar Treinamento da Secretária com '+nomeAl)) t.done=true; });
+        if(!gate4) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 0 com '+nomeAl)) t.done=true; });
+        if(!gate9) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 1 com '+nomeAl)) t.done=true; });
+        if(!gate10_1) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 3 com '+nomeAl)) t.done=true; });
+        if(!gate10_2) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 4 com '+nomeAl)) t.done=true; });
       }
       recalcTaxaPresenca(tid);
       scheduleSave();
@@ -3592,11 +3633,13 @@ function attachEvents() {
       const {presenca: op, aula: aulaId, alunoId, turma: tid} = el.dataset;
       if (!state.presenca[tid]) state.presenca[tid] = {};
       if (!state.presenca[tid][aulaId]) state.presenca[tid][aulaId] = {};
+      pushUndo();
       state.presenca[tid][aulaId][alunoId] = op;
       scheduleSave();
       const al = state.alunos.find(a=>a.id===alunoId);
-      const respId = PROFILES.find(p=>p.name===al?.responsavel)?.id || 'otavio';
+      const respId = PROFILES.find(p=>p.name===al?.responsavel)?.id || null;
       function triggerTask(titulo) {
+        if (!respId) return;
         const exists = state.tarefas.some(t=>!t.done && t.alunoId===alunoId && t.titulo===titulo);
         if (!exists) addTarefa({titulo, responsavel:respId, alunoId, alunoNome:al?.nome, prio:'alta'});
       }
@@ -3628,15 +3671,17 @@ function attachEvents() {
           descricao: `Verificar se assistiu: ${AULAS_DEF.find(a=>a.id===aulaId)?.label||aulaId}`
         });
       }
-      // Reset → auto-complete cobrar-video task + remover tarefas 1:1/secretária
+      // Reset → auto-complete cobrar-video + recalcular gatilhos 1:1
       if (op === 'reset') {
-        state.tarefas.forEach(t=>{
-          if(t.alunoId===alunoId && t.aulaId===aulaId && t.tipo==='cobrar-video') t.done=true;
-          if(t.alunoId===alunoId && (
-            t.titulo.startsWith('Marcar 1:1') ||
-            t.titulo.startsWith('Marcar Treinamento da Secretária')
-          )) t.done=true;
-        });
+        state.tarefas.forEach(t=>{ if(t.alunoId===alunoId && t.aulaId===aulaId && t.tipo==='cobrar-video') t.done=true; });
+        const pTidR = state.presenca[tid]||{};
+        const okR=(id)=>{const v=(pTidR[id]||{})[alunoId];return v==='sim'||v==='sim2'||v==='link'||v==='nao';};
+        const nomeAl2=al?.nome||'';
+        if(!okR('a2')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar Treinamento da Secretária com '+nomeAl2)) t.done=true; });
+        if(!okR('a4')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 0 com '+nomeAl2)) t.done=true; });
+        if(!okR('a9')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 1 com '+nomeAl2)) t.done=true; });
+        if(!okR('a10_1')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 3 com '+nomeAl2)) t.done=true; });
+        if(!okR('a10_2')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 4 com '+nomeAl2)) t.done=true; });
       }
       // Check 1:1 triggers — qualquer marca de presença (sim, sim2, nao, link)
       if (op === 'sim' || op === 'sim2' || op === 'nao' || op === 'link') {
@@ -3672,7 +3717,7 @@ function attachEvents() {
       if (!state.etapas[alunoId]) state.etapas[alunoId] = {};
       const et = state.etapas[alunoId];
       const a  = state.alunos.find(x=>x.id===alunoId);
-      const respId = PROFILES.find(p=>p.name===a?.responsavel)?.id || 'otavio';
+      const respId = PROFILES.find(p=>p.name===a?.responsavel)?.id || null;
       const nomeFirst = a?.nome?.split(' ')[0]||'';
       function triggerTask(titulo, responsavel, prazo) {
         const exists = state.tarefas.some(t=>!t.done && t.alunoId===alunoId && t.titulo===titulo);
