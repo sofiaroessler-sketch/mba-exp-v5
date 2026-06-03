@@ -155,7 +155,7 @@ textarea.inp{resize:vertical;min-height:80px;line-height:1.6}
 /* ═══ CHECKLIST ═══ */
 .check-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;background:var(--bg-s);transition:border-color .15s}
 .check-item:hover{border-color:var(--border2)}
-.check-box{width:18px;height:18px;border-radius:4px;border:1.5px solid var(--t4);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.check-box{width:18px;height:18px;border-radius:4px;border:1.5px solid var(--t4);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}.check-box svg{pointer-events:none}
 .check-box.done{background:var(--brand);border-color:var(--brand)}
 .check-box.done svg{display:block}
 .check-box svg{display:none;width:11px;height:11px}
@@ -1455,6 +1455,56 @@ function buildTurmaDetail() {
   </div>`;
 }
 
+
+// Retorna array de 12 meses {ano, mes(0-11), label} a partir do início da turma do médico
+function getMesesPlanilha(aluno) {
+  const INICIOS_TURMA = {
+    T1:'2025-04-16', T2:'2025-06-10', T3:'2025-07-28',
+    T4:'2025-09-09', T5:'2025-10-13', T6:'2025-11-11',
+    T7:'2026-01-12', T8:'2026-02-10', T9:'2026-03-03',
+    T10:'2026-04-13', T11:'2026-06-16'
+  };
+  // Usar inicio da turma do aluno (via turmaObj ou lookup)
+  const turmaObj = (state.turmas||[]).find(t=>t.id===aluno.turma);
+  let inicioStr = turmaObj?.inicio || INICIOS_TURMA[aluno.turma] || '';
+  if (!inicioStr) return null;
+  const d = new Date(inicioStr);
+  if (isNaN(d)) return null;
+  const MESES_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const meses = [];
+  for (let i = 0; i < 12; i++) {
+    const m = new Date(d.getFullYear(), d.getMonth() + i, 1);
+    meses.push({ ano: m.getFullYear(), mes: m.getMonth(), label: MESES_PT[m.getMonth()] + '/' + String(m.getFullYear()).slice(2) });
+  }
+  return meses;
+}
+
+// Verifica se o médico tem 2+ meses consecutivos sem ok em qualquer planilha
+function planilhaEmAlerta(aluno) {
+  const ok = aluno.planilhaOk || {};
+  const meses = getMesesPlanilha(aluno);
+  if (!meses) return false;
+  const hoje = new Date();
+  // Checar financeira e leads separado
+  for (const tipo of ['fin','leads']) {
+    const arr = ok[tipo] || Array(12).fill(false);
+    let consec = 0;
+    for (let i = 0; i < meses.length; i++) {
+      const m = meses[i];
+      // Só conta meses que já passaram
+      const dataM = new Date(m.ano, m.mes + 1, 1); // 1º do mês seguinte
+      if (dataM > hoje) break;
+      if (!arr[i]) {
+        consec++;
+        if (consec >= 2) return true;
+      } else {
+        consec = 0;
+      }
+    }
+  }
+  return false;
+}
+
 function buildCronograma(t, alunos) {
   // Determine which items are "done"
   function isAulaDone(ad) {
@@ -1613,7 +1663,7 @@ function buildAulaSection(t, alunos, ad) {
   const taxa = total ? Math.round(presentes/total*100) : 0;
   const taxaCls = taxa>=75?'pill-green':taxa>=50?'pill-amber':'pill-red';
   const aInfo = state.turmas.find(x=>x.id===t.id);
-  const aulaDate = (state.aulasDates||{})[t.id]?.[ad.id] || '';
+  const aulaDate = ((state.aulasDates||{})[t.id]?.[ad.id]||{}).data || '';
 
   return `
   <div class="prog-stage" data-aula-section="${ad.id}" style="margin-bottom:10px">
@@ -2220,8 +2270,38 @@ function buildDetailInfo(a) {
 
     <div class="divider"></div>
     <div class="section-title">Planilhas</div>
-    ${a.link_fin ? `<div class="kv"><span class="kv-k">Financeira</span><a href="${a.link_fin}" target="_blank" style="color:var(--brand-h)">${I.link} Abrir</a></div>` : `<div class="kv"><span class="kv-k">Financeira</span><span style="color:var(--red-t)">Não preenchido</span></div>`}
-    ${a.link_leads ? `<div class="kv"><span class="kv-k">Leads</span><a href="${a.link_leads}" target="_blank" style="color:var(--brand-h)">${I.link} Abrir</a></div>` : `<div class="kv"><span class="kv-k">Leads</span><span style="color:var(--red-t)">Não preenchido</span></div>`}
+    ${(() => {
+      const meses = getMesesPlanilha(a);
+      const ok = a.planilhaOk || {};
+      const finOk = ok.fin || Array(12).fill(false);
+      const leadsOk = ok.leads || Array(12).fill(false);
+      const hoje = new Date();
+
+      function buildGrid(tipo, arr, link, labelLink) {
+        const cols = meses ? meses.map((m, i) => {
+          const checked = arr[i];
+          const futuro = meses && new Date(m.ano, m.mes + 1, 1) > hoje;
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+            <span style="font-size:9px;color:var(--t4);white-space:nowrap">${m.label}</span>
+            <div class="check-box ${checked?'done':''} ${futuro?'':'planilha-ok-btn'}" 
+              ${!futuro ? `data-planilha-ok="${tipo}" data-planilha-idx="${i}" data-aluno-id="${a.id}"` : ''}
+              style="width:16px;height:16px;border-radius:3px;${futuro?'opacity:.3;cursor:default':'cursor:pointer'}">
+              ${checked ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="9" height="9"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+            </div>
+          </div>`;
+        }).join('') : '<span style="font-size:12px;color:var(--t4)">Turma sem data de início definida</span>';
+        return `
+        <div style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <span style="font-size:12.5px;font-weight:600;color:var(--t2)">${labelLink}</span>
+            ${link ? `<a href="${link}" target="_blank" style="color:var(--brand-h);font-size:12px">${I.link} Abrir</a>` : `<span style="color:var(--red-t);font-size:11.5px">Link não preenchido</span>`}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${cols}</div>
+        </div>`;
+      }
+
+      return buildGrid('fin', finOk, a.link_fin, 'Financeira') + buildGrid('leads', leadsOk, a.link_leads, 'Leads');
+    })()}
 
     ${(() => {
       // Card "Informações fornecidas no pré-onboarding" (raio-x do consultório, vindo do Typeform)
@@ -3140,6 +3220,22 @@ function attachEvents() {
     render();
   }));
 
+  // Caixinhas de ok de planilha
+  document.querySelectorAll('.planilha-ok-btn[data-planilha-ok]').forEach(el => {
+    el.style.pointerEvents = 'all';
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const {planilhaOk: tipo, planilhaIdx: idx, alunoId} = el.dataset;
+      const al = state.alunos.find(a=>a.id===alunoId);
+      if (!al) return;
+      if (!al.planilhaOk) al.planilhaOk = {};
+      if (!al.planilhaOk[tipo]) al.planilhaOk[tipo] = Array(12).fill(false);
+      al.planilhaOk[tipo][Number(idx)] = !al.planilhaOk[tipo][Number(idx)];
+      scheduleSave();
+      render();
+    });
+  });
+
   // ESC fecha o perfil do médico ou o modal
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
@@ -3714,24 +3810,27 @@ function attachEvents() {
     });
   });
 
-  // Tick 1:1 directly in cronograma
+  // Tick 1:1 directly in cronograma — usando event delegation para garantir funcionamento
   document.querySelectorAll('[data-tick-11]').forEach(el => {
+    el.style.cursor = 'pointer';
     el.addEventListener('click', e => {
       e.stopPropagation();
-      const {tick11: aulaId, alunoId} = el.dataset;
-      const aulaLabel = AULAS_DEF.find(a=>a.id===aulaId)?.label || aulaId;
+      e.preventDefault();
+      const aulaId = el.dataset.tick11;
+      const alunoId = el.dataset.alunoId;
+      // Pegar label do ad na turma atual (suporta renames)
+      const tid = state.selTurma;
+      const adFound = getAulasDaTurma(tid).find(a=>a.id===aulaId);
+      const aulaLabel = adFound?.label || AULAS_DEF.find(a=>a.id===aulaId)?.label || aulaId;
       const al = state.alunos.find(a=>a.id===alunoId);
       if (!al) return;
       if (!al.reunioes) al.reunioes = [];
-      // Check if already has a realizada for this tipo
       const existing = al.reunioes.find(r=>r.tipo===aulaLabel);
       if (existing && existing.realizada) {
-        // untick — remove realizada flag
         existing.realizada = false;
       } else if (existing) {
         existing.realizada = true;
       } else {
-        // create and mark done
         al.reunioes.push({id:'r_'+Date.now(), tipo:aulaLabel, data:new Date().toISOString().slice(0,10), realizada:true, notas:'', proxPassos:''});
       }
       scheduleSave();
@@ -6099,7 +6198,7 @@ function buildMonitoramentoPage() {
 
   // Separate into two groups: churn risk (presença) and missing planilhas
   const emRiscoPresenca  = state.alunos.filter(a => a.status==='ativo' && isRiscoPresenca(a));
-  const semPlanilha      = state.alunos.filter(a => a.status==='ativo' && (a.planilha_fin_ok===false||a.planilha_leads_ok===false));
+  const semPlanilha      = state.alunos.filter(a => a.status==='ativo' && planilhaEmAlerta(a));
   const todos            = state.alunos.filter(a => a.status==='ativo' && isRisco(a));
 
   // Weekly reminder logic — show banner if today is Monday or first visit this week
@@ -6159,7 +6258,7 @@ function buildMonitoramentoPage() {
       <!-- Planilhas pendentes -->
       ${semPlanilha.length > 0 ? `
       <div class="divider"></div>
-      <div class="section-title" style="margin-bottom:12px">Planilhas Pendentes (${semPlanilha.length})</div>
+      <div class="section-title" style="margin-bottom:12px">Planilhas — 2 meses sem verificação (${semPlanilha.length})</div>
       ${semPlanilha.map(a => `
         <div style="border:1px solid rgba(99,102,241,.35);border-radius:var(--r2);padding:14px 16px;margin-bottom:10px;background:rgba(99,102,241,.06);cursor:pointer" data-open-aluno="${a.id}" data-open-tab="info">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -6170,8 +6269,7 @@ function buildMonitoramentoPage() {
               </div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
-              ${a.planilha_fin_ok===false   ? `<span class="pill pill-red" style="font-size:11px">Sem planilha financeira</span>` : `<span class="pill pill-green" style="font-size:11px">Fin ok</span>`}
-              ${a.planilha_leads_ok===false ? `<span class="pill pill-red" style="font-size:11px">Sem planilha de leads</span>` : `<span class="pill pill-green" style="font-size:11px">Leads ok</span>`}
+              <span class="pill pill-red" style="font-size:11px">2+ meses sem ok</span>
             </div>
           </div>
         </div>
