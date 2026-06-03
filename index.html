@@ -3824,12 +3824,17 @@ function attachEvents() {
       const al = state.alunos.find(a=>a.id===alunoId);
       if (!al) return;
       if (!al.reunioes) al.reunioes = [];
-      const existing = al.reunioes.find(r=>r.tipo===aulaLabel);
-      if (existing && existing.realizada) {
-        existing.realizada = false;
-      } else if (existing) {
-        existing.realizada = true;
+      // Toggle simples: realizada ↔ não. Nunca cria reunião "agendada" pelo check.
+      const existingIdx = al.reunioes.findIndex(r=>r.tipo===aulaLabel);
+      if (existingIdx >= 0 && al.reunioes[existingIdx].realizada) {
+        // já realizada → desmarcar (remove)
+        al.reunioes.splice(existingIdx, 1);
+      } else if (existingIdx >= 0) {
+        // existe mas não realizada (agendada) → marcar como realizada
+        al.reunioes[existingIdx].realizada = true;
+        if (!al.reunioes[existingIdx].data) al.reunioes[existingIdx].data = new Date().toISOString().slice(0,10);
       } else {
+        // não existe → criar e marcar
         al.reunioes.push({id:'r_'+Date.now(), tipo:aulaLabel, data:new Date().toISOString().slice(0,10), realizada:true, notas:'', proxPassos:''});
       }
       scheduleSave();
