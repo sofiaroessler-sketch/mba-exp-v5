@@ -1629,19 +1629,11 @@ function buildAulaSection(t, alunos, ad) {
           <thead><tr><th>Aluno</th><th>Responsável</th><th style="text-align:center">Realizado</th><th>Data</th></tr></thead>
           <tbody>
             ${alunos.map(a => {
-              const nowStr2 = new Date().toISOString().slice(0,16);
               const reu = (a.reunioes||[]).find(r=>r.realizada && r.tipo===ad.label);
               const agendada = (a.reunioes||[]).find(r=>!r.realizada && r.tipo===ad.label);
-              const passada = agendada && agendada.data && agendada.hora && (agendada.data+'T'+agendada.hora) < nowStr2;
-              const done = !!reu || passada;
-              // Link direto do Google Calendar para agendar
-              const gcalTitle = encodeURIComponent(`${ad.label} · ${a.nome.split(' ').slice(0,2).join(' ')}`);
-              const gcalDesc = encodeURIComponent(`Turma ${t.id}\nMédico: ${a.nome}`);
-              const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${gcalTitle}&details=${gcalDesc}`;
+              const done = !!reu;
               return `<tr>
-                <td style="font-weight:500;color:var(--t1)">
-                  ${(!reu && !agendada) ? `<a href="${gcalUrl}" target="_blank" style="color:var(--brand-h);text-decoration:none;cursor:pointer" title="Agendar no Google Calendar">${a.nome}</a>` : a.nome}
-                </td>
+                <td style="font-weight:500;color:var(--t1)">${a.nome}</td>
                 <td style="color:var(--t4);font-size:12px">${a.responsavel||'—'}</td>
                 <td style="text-align:center">
                   <div data-aula11="${ad.id}" data-aluno-id="${a.id}" style="margin:0 auto;width:18px;height:18px;border-radius:4px;border:1.5px solid ${done?'var(--brand)':'var(--t4)'};background:${done?'var(--brand)':'transparent'};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s">
@@ -1649,7 +1641,7 @@ function buildAulaSection(t, alunos, ad) {
                   </div>
                 </td>
                 <td style="font-size:12px;color:var(--t4)">
-                  ${reu ? reu.data : agendada ? `<a href="${gcalUrl}" target="_blank" style="color:var(--brand-h);text-decoration:none"><span class="pill pill-blue" style="font-size:9.5px">Agendado ${agendada.data}</span></a>` : '—'}
+                  ${reu ? reu.data : agendada ? `<span class="pill pill-blue" style="font-size:9.5px">Agendado ${agendada.data}</span>` : '—'}
                 </td>
               </tr>`;
             }).join('')}
