@@ -3659,12 +3659,13 @@ function attachEvents() {
   document.querySelectorAll('[data-presenca]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation();
-      const {presenca: op, aula: aulaId, alunoId, turma: tid} = el.dataset;
+      const {presenca: opRaw, aula: aulaId, alunoId, turma: tid} = el.dataset;
       if (!state.presenca[tid]) state.presenca[tid] = {};
       if (!state.presenca[tid][aulaId]) state.presenca[tid][aulaId] = {};
       pushUndo();
       // Toggle: clicar de novo no mesmo botão desmarca
       const cur = state.presenca[tid][aulaId][alunoId];
+      let op = opRaw;
       if (cur === op) {
         delete state.presenca[tid][aulaId][alunoId];
         op = 'reset';
