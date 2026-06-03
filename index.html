@@ -176,12 +176,12 @@ textarea.inp{resize:vertical;min-height:80px;line-height:1.6}
 .toast.err{border-color:var(--red-b);background:var(--red-bg)}
 
 /* ═══ LOGIN ═══ */
-#login-page{position:fixed;inset:0;background:linear-gradient(135deg,#f3eeff 0%,#F7F7F7 60%,#e8f7f7 100%);display:flex;align-items:center;justify-content:center;z-index:9000;padding:20px}
-.login-card{background:#fff;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.08);border-radius:var(--r3);padding:32px;width:100%;max-width:400px;box-shadow:0 32px 80px rgba(0,0,0,.6)}
+#login-page{position:fixed;inset:0;background:linear-gradient(135deg,#1a0535 0%,#2d0a5e 50%,#1a0535 100%);display:flex;align-items:center;justify-content:center;z-index:9000;padding:20px}
+.login-card{background:#fff;border:none;box-shadow:none;border-radius:var(--r3);padding:36px;width:100%;max-width:400px}
 .login-logo{text-align:center;margin-bottom:28px}
 .login-logo-mark{width:48px;height:48px;border-radius:12px;background:transparent;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
 .login-logo-mark img{width:120px;height:80px;object-fit:contain}
-.login-title{font-family:var(--fh);font-weight:700;font-size:20px;color:var(--t1);margin-bottom:4px}
+.login-title{font-family:var(--fh);font-weight:700;font-size:20px;color:#60009C;margin-bottom:4px}
 .login-sub{font-size:13px;color:var(--t4)}
 .profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
 .profile-btn{padding:12px;border-radius:var(--r2);border:1px solid var(--border);background:#fff;cursor:pointer;text-align:center;transition:all .15s;font-family:var(--fh);font-weight:600;font-size:13.5px;color:var(--t1)}
@@ -2314,10 +2314,10 @@ function buildDetailInfo(a) {
           const checked = arr[i];
           const futuro = meses && new Date(m.ano, m.mes + 1, 1) > hoje;
           return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-            <span style="font-size:9px;color:var(--t4);white-space:nowrap">${m.label}</span>
+            <span style="font-size:9.5px;color:#555;white-space:nowrap;font-weight:500">${m.label}</span>
             <div class="check-box ${checked?'done':''} ${futuro?'':'planilha-ok-btn'}" 
               ${!futuro ? `data-planilha-ok="${tipo}" data-planilha-idx="${i}" data-aluno-id="${a.id}"` : ''}
-              style="width:18px;height:18px;border-radius:4px;border:2px solid ${checked?'#60009C':futuro?'#ddd':'#aaa'};background:${checked?'#60009C':'#fff'};${futuro?'opacity:.4;cursor:default':'cursor:pointer'}">
+              style="width:18px;height:18px;border-radius:3px;border:${checked?'2px solid #60009C':futuro?'1.5px dashed #ccc':'2px solid #9ca3af'};background:${checked?'#60009C':futuro?'#f9f9f9':'#fff'};${futuro?'opacity:.5;cursor:default':'cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.05)'}">
               ${checked ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="9" height="9"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
             </div>
           </div>`;
