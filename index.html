@@ -3663,7 +3663,14 @@ function attachEvents() {
       if (!state.presenca[tid]) state.presenca[tid] = {};
       if (!state.presenca[tid][aulaId]) state.presenca[tid][aulaId] = {};
       pushUndo();
-      state.presenca[tid][aulaId][alunoId] = op;
+      // Toggle: clicar de novo no mesmo botão desmarca
+      const cur = state.presenca[tid][aulaId][alunoId];
+      if (cur === op) {
+        delete state.presenca[tid][aulaId][alunoId];
+        op = 'reset';
+      } else {
+        state.presenca[tid][aulaId][alunoId] = op;
+      }
       scheduleSave();
       const al = state.alunos.find(a=>a.id===alunoId);
       const respId = PROFILES.find(p=>p.name===al?.responsavel)?.id || null;
@@ -6460,10 +6467,11 @@ function buildTurmasAntigasPage() {
 function buildMonitoramentoPage() {
   const rc = state.riscoCriteria||{maxFaltas:2, maxConsec:2, maxConsecLink:3};
 
-  // Separate into two groups: churn risk (presença) and missing planilhas
+  const rc2 = state.riscoCriteria||{maxFaltas:2, maxConsec:2, maxConsecLink:3};
   const emRiscoPresenca  = state.alunos.filter(a => a.status==='ativo' && isRiscoPresenca(a));
   const _turmasConclMonit = new Set(state.turmas.filter(t=>t.concluida).map(t=>t.id));
   const semPlanilha      = state.alunos.filter(a => a.status==='ativo' && !_turmasConclMonit.has(a.turma) && planilhaEmAlerta(a));
+  const semLinkPlanilha  = state.alunos.filter(a => a.status==='ativo' && !_turmasConclMonit.has(a.turma) && (!a.link_fin || !a.link_leads));
   const todos            = state.alunos.filter(a => a.status==='ativo' && isRisco(a));
 
   // Weekly reminder logic — show banner if today is Monday or first visit this week
@@ -6518,6 +6526,26 @@ function buildMonitoramentoPage() {
       ${emRiscoPresenca.length > 0 ? `
       <div class="section-title" style="margin-bottom:12px">Risco de Churn — Presença (${emRiscoPresenca.length})</div>
       ${emRiscoPresenca.map(a => buildRiscoCard(a)).join('')}
+      ` : ''}
+
+      <!-- Sem link de planilha -->
+      ${semLinkPlanilha.length > 0 ? `
+      <div class="divider"></div>
+      <div class="section-title" style="margin-bottom:12px">Planilhas não cadastradas (${semLinkPlanilha.length})</div>
+      ${semLinkPlanilha.map(a => `
+        <div style="border:1px solid #fca5a5;border-radius:var(--r2);padding:12px 16px;margin-bottom:8px;background:#fff5f5;cursor:pointer" data-open-aluno="${a.id}" data-open-tab="info">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div>
+              <div style="font-family:var(--fh);font-weight:600;font-size:13.5px;color:var(--t1)">${a.nome}</div>
+              <div style="font-size:12px;color:var(--t4);margin-top:2px">${a.turma?`<span style="color:var(--brand)">${a.turma}</span> · `:''}${a.responsavel||'Sem responsável'}</div>
+            </div>
+            <div style="display:flex;gap:5px;flex-shrink:0">
+              ${!a.link_fin   ? '<span class="pill pill-red" style="font-size:10.5px">Fin sem link</span>'   : ''}
+              ${!a.link_leads ? '<span class="pill pill-red" style="font-size:10.5px">Leads sem link</span>' : ''}
+            </div>
+          </div>
+        </div>
+      `).join('')}
       ` : ''}
 
       <!-- Planilhas pendentes -->
