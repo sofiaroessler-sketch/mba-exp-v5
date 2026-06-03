@@ -92,7 +92,7 @@ button,input,select,textarea{font-family:var(--fb);outline:none;font-size:14px}
 .btn-danger{background:var(--red);color:#fff;padding:8px 14px}
 .btn-sm{font-size:11.5px;padding:5px 12px}
 .btn-xs{font-size:11px;padding:4px 9px;border-radius:4px}
-.btn-icon{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;color:#3d3550;transition:all .15s}
+.btn-icon{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:#f3f0f8;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;color:#2d2540;transition:all .15s}
 .btn-icon:hover{background:var(--bg-s);color:#60009C}
 .btn svg{width:14px;height:14px}
 
@@ -368,6 +368,7 @@ async function saveStateToDb(retryCount = 0) {
     accessStats:  state.accessStats || {},
     profiles:     state.profiles,
     reunioes:     state.reunioes,
+    expandedAulas: state.expandedAulas || {},
   };
 
   try {
@@ -452,6 +453,7 @@ async function loadStateFromDb() {
       if (d.etapas)       state.etapas       = d.etapas;
       if (d.linkEnviado)  state.linkEnviado  = d.linkEnviado;
       if (d.aulaAberta)   state.aulaAberta   = d.aulaAberta;
+      if (d.expandedAulas) state.expandedAulas = d.expandedAulas;
       if (d.faltaLog)     state.faltaLog     = d.faltaLog;
       if (d.riscoCriteria) state.riscoCriteria = d.riscoCriteria;
       if (d.accessLog)      state.accessLog    = d.accessLog;
@@ -882,7 +884,7 @@ const ESPECIALIDADES = [
 let state = {
   user: null,
   loginMode: null,  // 'change-password' after invite
-  page: 'turmas',
+  page: 'central',
   alunos: [],
   turmas: buildInitTurmas(),
   tarefas: [],
@@ -1262,7 +1264,13 @@ function buildLoginPage() {
 function buildSidebar() {
   const u = state.user;
   const minhas = getMinhasTarefas().filter(t=>!t.done).length;
-  const novosMedicos = state.alunos.filter(a => a.status==='ativo' && !a.responsavel).length;
+  const novosMedicos = state.alunos.filter(a => {
+    if (a.status !== 'ativo') return false;
+    const _et = state.etapas[a.id] || {};
+    const _formsOk = _et.forms_status==='recebido' || _et.forms_done;
+    const _todasOk = _formsOk && _et.ind_done && _et.onb_done && _et.fin_done;
+    return !_todasOk;
+  }).length;
   const semSenha = isYgor() ? state.profiles.filter(p => p.id !== 'admin' && !p.hasPassword).length : 0;
   // tarefas do usuário não concluídas, com prazo, que vencem em até 2 dias ou já passaram
   const hojeStr = new Date().toISOString().slice(0,10);
@@ -1275,6 +1283,7 @@ function buildSidebar() {
   const nav = isAdminOnly ? [
     {id:'admin', label:'Admin', icon:I.adminIcon},
   ] : [
+    {id:'central', label:'Central', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>'},
     {id:'turmas',    label:'Turmas',    icon:I.turmas},
     {id:'tarefas',   label:'Tarefas',   icon:I.tasks, badge: minhas > 0 ? minhas : 0},
     {id:'medicos',   label:'Médicos',   icon:I.medicos, badge: (isYgor()||isBruna()) && novosMedicos > 0 ? novosMedicos : 0, badgeColor:'amber'},
@@ -1283,7 +1292,6 @@ function buildSidebar() {
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
     {id:'minhas-reunioes', label:'Minhas Reuniões', icon:I.cal},
     {id:'kanban', label:'Situação das Turmas', icon:I.kanban},
-    {id:'manual', label:'Manual de Uso', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>'},
     ...(concluidas.length > 0 ? [{id:'turmas-antigas', label:'Turmas Antigas', icon:I.turmas}] : []),
   ];
   return `
@@ -1320,9 +1328,15 @@ function buildSidebar() {
         <span class="sb-uname" style="flex:1">${u.name}</span>
         <button class="sb-out" data-logout title="Sair" style="color:rgba(255,255,255,.4)">${I.logout}</button>
       </div>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">
+        📖 Manual de Uso
+      </button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
         ${I.logout} Sair
       </button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
 
     </div>
   `;
@@ -1333,6 +1347,7 @@ function buildSidebar() {
 // ═══════════════════════════════════════════════════════
 function buildMain() {
   if (state.selTurma) return buildTurmaDetail();
+  if (state.page === 'central') return buildCentralPage();
   if (state.page === 'turmas') return buildTurmasPage();
   if (state.page === 'tarefas') return buildTarefasPage();
   if (state.page === 'medicos') return buildMedicosPage();
@@ -1433,10 +1448,13 @@ function buildTurmaCard(t) {
 }
 
 function getProxAula(tid) {
-  // Find first aula not yet marked for this turma
   const marcadas = state.presenca[tid] || {};
   for (const ad of getAulasDaTurma(tid)) {
-    if (ad.bloco !== '11' && !marcadas[ad.id]) return ad.label.split('—')[0].trim();
+    if (ad.bloco !== '11' && !Object.keys(marcadas[ad.id]||{}).length) {
+      const dateInfo = ((state.aulasDates||{})[tid]||{})[ad.id];
+      const label = ad.label.split('—')[0].trim();
+      return dateInfo?.data ? `${label} · ${dateInfo.data}` : label;
+    }
   }
   return 'Concluída';
 }
@@ -1890,7 +1908,7 @@ function buildTarefasPage() {
     <div style="padding:0 26px 10px;display:flex;gap:6px;flex-shrink:0">
       <div class="inner-tab ${state.tarefaFilter==='pendentes'?'active':''}" data-tarefa-filter="pendentes" style="cursor:pointer">Pendentes (${pendentes.length})</div>
       <div class="inner-tab ${state.tarefaFilter==='urgentes'?'active':''}" data-tarefa-filter="urgentes" style="cursor:pointer">Urgentes (${pendentes.filter(t=>t.prazo&&t.prazo<=addDays(now(),3)).length})</div>
-      <div class="inner-tab ${state.tarefaFilter==='todas'?'active':''}" data-tarefa-filter="todas" style="cursor:pointer">Todas (${minhas.length})</div>
+      <div class="inner-tab ${state.tarefaFilter==='todas'?'active':''}" data-tarefa-filter="todas" style="cursor:pointer">Todas (${pendentes.length})</div>
     </div>
     <div class="page-body" style="padding-top:8px">
       ${state.tarefaFilter==='pendentes' && pendentes.length===0 ? `<div class="empty-state" style="padding:32px 0">${I.tasks}<p>Nenhuma tarefa pendente </p></div>` : ''}
@@ -1969,7 +1987,13 @@ function buildMedicosPage() {
   } else if (state.filtroMedicos === 'churn') {
     lista = lista.filter(a => a.status==='churn');
   } else if (state.filtroMedicos === 'novos') {
-    lista = lista.filter(a => a.status==='ativo' && !a.responsavel);
+    lista = lista.filter(a => {
+      if (a.status !== 'ativo') return false;
+      const et = state.etapas[a.id] || {};
+      const formsOk = et.forms_status==='recebido' || et.forms_done;
+      const todasEtapasOk = formsOk && et.ind_done && et.onb_done && et.fin_done;
+      return !todasEtapasOk; // só aparece se NÃO tiver todas as etapas ok
+    });
   }
 
   if (state.filtroEspecialidade && state.filtroEspecialidade !== 'todas') {
@@ -2619,6 +2643,7 @@ function buildModal() {
   if (m.type === 'nova-turma') return buildModalNovaTurma();
   if (m.type === 'novo-medico') return buildModalNovoMedico();
   if (m.type === 'nova-tarefa') return buildModalNovaTarefa();
+  if (m.type === 'manual') return buildModalManual();
   if (m.type === 'nova-reuniao') return buildModalNovaReuniao();
   if (m.type === 'marcar-aula') return buildModalMarcarAula();
   if (m.type === 'nova-reuniao-calendario') return buildModalNovaReuniaoCalendario();
@@ -3009,15 +3034,25 @@ function attachEvents() {
       await sbRequest('/auth/v1/signup', 'POST', { email, password: pass });
       // Faz login
       await sbSignIn(email, pass);
-      // Salva email no perfil
+      // Salva email e hasPassword no perfil
       const pid = state.setupProfile;
       const p = state.profiles.find(x=>x.id===pid);
-      if (p) p.email = email;
+      if (p) { p.email = email; p.hasPassword = true; }
+      // Atualizar também no PROFILES global
+      const pp2 = PROFILES.find(x=>x.id===pid);
+      if (pp2) { pp2.email = email; pp2.hasPassword = true; }
       // Loga no app
       state.user = p || { id: pid, name: pid };
       state.loginMode = null;
       state.setupProfile = null;
+      // Salva primeiro para persistir hasPassword=true, depois recarrega
+      await saveStateToDb();
       await loadStateFromDb();
+      // Garantir que hasPassword continua true após reload
+      const pAfter = state.profiles.find(x=>x.id===pid);
+      if (pAfter) pAfter.hasPassword = true;
+      const ppAfter = PROFILES.find(x=>x.id===pid);
+      if (ppAfter) ppAfter.hasPassword = true;
       await saveStateToDb();
       logAccess('login');
       render();
@@ -3209,6 +3244,7 @@ function attachEvents() {
       if (a === 'cancelar-edicao') { state.editandoAluno=false; state.editForm={}; render(); }
       if (a === 'back-turmas') { state.selTurma = null; render(); }
       if (a === 'voltar-turmas-antigas') { state.turmasAntigasSel = null; render(); }
+      if (a === 'abrir-manual') { state.modal = {type:'manual'}; render(); }
       if (a === 'editar-turma') { const t=state.turmas.find(x=>x.id===state.selTurma); state.modal={type:'edit-turma', turma:t}; render(); }
       if (a === 'salvar-turma') salvarTurma();
       if (a === 'salvar-medico') salvarMedico();
@@ -3336,6 +3372,16 @@ function attachEvents() {
   // ESC fecha o perfil do médico ou o modal
   document.querySelectorAll('[data-manual-tab]').forEach(el => {
     el.addEventListener('click', () => { state.manualTab = el.dataset.manualTab; render(); });
+  });
+
+  // Central filtros
+  document.querySelectorAll('[data-central-filtro]').forEach(el => {
+    el.addEventListener('click', () => { state.centralFiltro = el.dataset.centralFiltro; render(); });
+  });
+
+  // Central: clicar em aula vai para a turma
+  document.querySelectorAll('[data-nav-turma]').forEach(el => {
+    el.addEventListener('click', () => { state.selTurma = el.dataset.navTurma; state.turmaBView = 'cronograma'; render(); });
   });
 
   document.addEventListener('keydown', e => {
@@ -5038,18 +5084,6 @@ function buildAdminGeral() {
       </div>`;
     }).join('')}
 
-    <div class="divider"></div>
-    <div class="section-title">Alunos sem Planilhas</div>
-    ${state.alunos.filter(a=>!a.link_fin||!a.link_leads).slice(0,8).map(a=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;background:var(--bg-s)">
-        <span style="font-size:13px;color:var(--t1)">${a.nome}</span>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span style="font-size:11px;color:var(--brand-h)">${a.turma||'—'}</span>
-          ${!a.link_fin   ? '<span class="pill pill-red" style="font-size:10px">Fin</span>'   : ''}
-          ${!a.link_leads ? '<span class="pill pill-red" style="font-size:10px">Leads</span>' : ''}
-        </div>
-      </div>
-    `).join('')}
   </div>`;
 }
 
@@ -5380,7 +5414,7 @@ function buildModalEditTurma(t) {
     const info = datas[ad.id] || {};
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-      <input class="inp" id="et-label-${ad.id}" value="${(ad.label||'').replace(/"/g,'&quot;')}" style="flex:1;min-width:120px;padding:6px 8px;font-size:12.5px" title="Nome da aula nesta turma">
+      <input class="inp" id="et-label-${ad.id}" style="white-space:nowrap" value="${(ad.label||'').replace(/"/g,'&quot;')}" style="flex:1;min-width:120px;padding:6px 8px;font-size:12.5px" title="Nome da aula nesta turma">
       <input class="inp" type="date" id="et-data-${ad.id}" value="${info.data||''}" style="width:150px;padding:6px 8px">
       <button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-remover-aula-turma="${ad.id}" data-turma-id="${t.id}" title="Remover esta aula da turma">${I.trash}</button>
     </div>`;
@@ -7047,6 +7081,313 @@ function buildManualPage() {
     </div>
     <div class="page-body" style="max-width:720px">
       ${content[tab]||''}
+    </div>
+  </div>`;
+}
+
+
+function buildModalManual() {
+  const tab = state.manualTab || 'consultores';
+  const tabs = [
+    {id:'consultores', label:'Consultores'},
+    {id:'cs', label:'CS'},
+    {id:'admin', label:'Função Administrador'},
+  ];
+
+  const tip = (txt) => `<div class="manual-tip">💡 ${txt}</div>`;
+  const h2 = (txt) => `<h2 class="manual-h2">${txt}</h2>`;
+  const p = (txt) => `<p class="manual-p">${txt}</p>`;
+  const li = (items) => `<ul class="manual-list">${items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
+  const section = (content) => `<div class="manual-section">${content}</div>`;
+
+  const content = {
+    consultores: [
+      section(h2('Visão Geral') + p('Como consultor, você acompanha o progresso dos médicos sob sua responsabilidade. Sua tela principal mostra apenas os seus médicos por padrão. Fique atento à aba <strong>Tarefas</strong> — ela é o seu centro de operações.')),
+
+      section(h2('1. Aba Tarefas — seu centro de operações') + p('As tarefas chegam automaticamente conforme o andamento do programa. Ao receber uma notificação para marcar um 1:1 ou reunião, clique no nome do médico na tarefa — o perfil dele abrirá direto na aba Reuniões.') + tip('Tarefas novas aparecem sempre no topo da lista.')),
+
+      section(h2('2. Agendar uma Reunião') + p('No perfil do médico, aba <strong>Reuniões</strong>, clique em <strong>Agendar Reunião</strong>. A reunião vai automaticamente para o Google Agenda.') + li([
+        'Para a <strong>T11</strong>: os médicos já são convidados automaticamente via link do Google Meet',
+        'Para <strong>outras turmas</strong>: é necessário adicionar o número de telefone do médico',
+      ])),
+
+      section(h2('3. Quando receber a notificação de 1:1') + p('Após cada marco do programa, você recebe uma tarefa. Os gatilhos são:') + li([
+        'Após a <strong>Aula 2</strong> → Treinamento da Secretária',
+        'Após a <strong>Aula 4</strong> → 1:1 — 0',
+        'Após a <strong>Aula 9</strong> → 1:1 — 1',
+        'Após a <strong>Aula 10</strong> → 1:1 — 2 e 1:1 — 3',
+        'Após a <strong>Aula 11</strong> → 1:1 — 4',
+      ]) + tip('As tarefas de 1:1 somem automaticamente se a presença do aluno naquela aula for desmarcada.')),
+
+      section(h2('4. Marcar 1:1 ou Treinamento como Realizado') + p('Após realizar a reunião, vá em <strong>Turmas → selecione a turma → Cronograma</strong>. Na seção do 1:1 correspondente, clique no ✓ ao lado do nome do médico para marcá-lo como realizado.')),
+
+      section(h2('5. Registrar a Reunião') + p('No perfil do médico, aba <strong>Reuniões</strong>, clique em <strong>Realizar</strong> na reunião correspondente. Preencha:') + li([
+        '<strong>O que foi discutido</strong> — pode puxar o resumo do tl;dv',
+        '<strong>Próximos passos</strong> — ações acordadas na reunião',
+      ])),
+
+      section(h2('6. OKRs & KPIs') + p('Se durante a reunião forem definidas metas (ex: abrir um consultório, reduzir despesas em 15%), registre na aba <strong>OKRs & KPIs</strong> do médico:') + li([
+        'Clique em <strong>Nova Meta</strong> e descreva o objetivo',
+        'Clique em <strong>+ KPI</strong> e defina métricas específicas',
+        'Na próxima reunião, monitore e clique no ✓ se a meta foi atingida',
+      ])),
+
+      section(h2('7. Notificação de Comentários') + p('Se alguém fizer um comentário (nota) no perfil de um médico sob sua responsabilidade, você receberá uma notificação na aba Tarefas.')),
+
+      section(h2('8. Situação das Turmas') + p('A aba <strong>Situação das Turmas</strong> mostra um kanban com o status de cada turma: qual será a próxima aula, onde cada turma está no programa, e se há material pré/pós aula disponível.')),
+
+      section(h2('9. Turmas Antigas') + p('Turmas concluídas ficam arquivadas. Acesse pelo botão <strong>Turmas Antigas</strong> no menu lateral — você pode ver presença e perfil dos médicos normalmente, mas eles não são contabilizados nos totais do sistema.')),
+
+      section(h2('Atalhos Úteis') + li([
+        '<strong>ESC</strong> — fecha o perfil do médico ou qualquer modal',
+        '<strong>Ctrl+Z / Cmd+Z</strong> — desfaz a última marcação de presença',
+        'Clicar no nome do aluno na tabela de presença — abre o perfil',
+      ])),
+    ].join(''),
+
+    cs: [
+      section(h2('Visão Geral — CS') + p('Como CS, você coordena o operacional do programa: controle de presença, envio de materiais, onboarding de novos médicos e verificação de planilhas. Suas tarefas chegam automaticamente — a aba <strong>Tarefas</strong> é sua central de operações.')),
+
+      section(h2('1. Controle de Presença') + p('Na aba <strong>Turmas</strong>, clique na turma. Na aba <strong>Calendário</strong> você encontra todas as próximas aulas com datas. Para marcar presença, vá em <strong>Cronograma</strong>, abra a aula e marque cada aluno:') + li([
+        '<strong>Presente</strong> → 1 clique (verde)',
+        '<strong>Faltou</strong> → botão Faltou — gera automaticamente uma tarefa para enviar o link da aula',
+        'Ao dar ok na tarefa de enviar link → presença muda automaticamente para <strong>Link</strong> (amarelo)',
+        'Quando o aluno confirmar que assistiu → dê ok na tarefa de "Cobrar vídeo" → presença muda para <strong>P ●</strong> (amarelo — assistiu pela gravação)',
+      ]) + tip('Clique no mesmo botão novamente para desmarcar. Use Ctrl+Z para desfazer.')),
+
+      section(h2('2. Sua Tela Inicial — Visão do Dia') + p('Ao abrir o app, você vê um resumo da semana: tarefas com vencimento nos próximos 7 dias, quais aulas acontecem quando e com qual turma, e as reuniões da semana. O padrão são os próximos 7 dias, mas você pode filtrar por pendentes para ver tudo em aberto.') + tip('Use os filtros de tarefa para separar: links a enviar, tarefas de onboarding e tarefas de reunião.')),
+
+      section(h2('3. Notificação após a Aula 4') + p('Ao término da Aula 4, você receberá uma notificação para <strong>avisar no grupo da turma sobre a pausa de 1 mês</strong> entre as aulas 4 e 5.')),
+
+      section(h2('4. Novo Médico — Fluxo de Onboarding') + p('Quando um novo médico é adicionado ao sistema:') + li([
+        '1. Você recebe uma tarefa: <strong>Mandar forms de pré-onboarding</strong>',
+        '2. Clique no nome do médico na tarefa → abre direto na aba Etapas Iniciais',
+        '3. Envie o formulário e dê ok na tarefa → o perfil do médico é marcado automaticamente',
+        '4. O sistema gera nova tarefa: <strong>Verificar recebimento do forms</strong> (prazo: 7 dias)',
+        '5. Confirmado o recebimento → nova tarefa: <strong>Reunião Individual</strong>',
+        '6. Realizada → nova tarefa: <strong>Reunião de Onboarding</strong>',
+        '7. Realizada → nova tarefa: <strong>Reunião Fin/Leads</strong>',
+      ]) + tip('Em cada reunião, abra o perfil do médico, vá em Reuniões, clique em Realizar e anote o que foi discutido e próximos passos.')),
+
+      section(h2('5. Verificação de Planilhas') + p('Todo dia 1 do mês você recebe uma notificação para verificar se os alunos estão preenchendo as planilhas. No perfil de cada médico, aba <strong>Informações</strong>, há duas grades de 12 caixinhas (Financeira e Leads). Clique na caixinha do mês para registrar a verificação.') + tip('Para adicionar o link de uma planilha: abra o perfil do médico, clique no lápis ✏️ para editar, cole o link do Google Sheets e salve.')),
+
+      section(h2('6. Monitoramento de Status') + p('A aba <strong>Monitoramento de Status</strong> mostra:') + li([
+        '<strong>Risco de churn</strong> — médicos com muitas faltas ou ausências consecutivas',
+        '<strong>Planilhas não cadastradas</strong> — médicos sem link de planilha',
+        '<strong>2 meses sem verificação</strong> — médicos que pararam de ser verificados (só aparece após o 1º ok)',
+      ])),
+
+      section(h2('Atalhos') + li([
+        '<strong>ESC</strong> — fecha perfil ou modal',
+        '<strong>Ctrl+Z</strong> — desfaz última presença',
+        'Lixeira nas tarefas — exclui permanentemente',
+        'Filtros de tarefa: links, onboarding, reunião',
+      ])),
+    ].join(''),
+
+    admin: [
+      section(h2('Visão Geral — Função Administrador') + p('O administrador (Ygor) tem acesso total à plataforma. Ao abrir o app, veja o resumo semanal de tarefas, aulas e reuniões — mesma visão dos outros usuários, mais o painel de administração.')),
+
+      section(h2('1. Novo Médico') + p('Na aba <strong>Médicos</strong>, clique em <strong>Novo Médico</strong>. Preencha nome, turma e responsável — uma tarefa de onboarding é enviada automaticamente para a CS.') + tip('Médicos sem responsável não geram notificações de 1:1 até que um consultor seja atribuído. Você recebe uma tarefa para designar o responsável.')),
+
+      section(h2('2. Gerenciar Turmas') + p('Na aba <strong>Turmas</strong>, clique em <strong>Nova Turma</strong>. Defina nome, data de início e responsável. Para concluir uma turma, use o botão <strong>Concluir turma</strong> — ela vai para Turmas Antigas e os médicos saem de todos os contadores.')),
+
+      section(h2('3. Gerenciar Usuários') + p('No painel <strong>Admin → Perfis & Usuários</strong>, você cria novos perfis com email e senha. Usuários que ainda não definiram senha aparecem com badge âmbar no menu lateral.')),
+
+      section(h2('4. Importar Dados') + p('Em Admin, há opção de importar médicos e turmas via planilha Excel. Colunas: <strong>Nome, Turma, Responsável</strong> (+ Especialidade, Cidade, WhatsApp opcionais).')),
+
+      section(h2('5. Aba Aulas — Editar Nomes') + p('Em <strong>Admin → Aulas</strong>, você pode renomear qualquer aula — o novo nome reflete em todas as turmas automaticamente. Também é possível adicionar novas aulas ao final da lista.') + tip('Renomear uma aula mantém toda a presença já registrada — nada é perdido.')),
+
+      section(h2('6. Relatório de Acesso') + p('Em <strong>Admin → Relatório de Acesso</strong>, veja quais usuários estão usando a plataforma, com que frequência e qual aba mais acessam.')),
+
+      section(h2('7. Critérios de Risco de Churn') + p('Em <strong>Monitoramento de Status</strong>, ajuste os critérios que definem um médico em risco:') + li([
+        '<strong>Máx. faltas</strong> — total de faltas permitidas',
+        '<strong>Máx. consecutivas</strong> — faltas seguidas',
+        '<strong>Máx. links seguidos</strong> — aulas só pela gravação',
+      ])),
+
+      section(h2('Atalhos') + li([
+        '<strong>ESC</strong> — fecha qualquer painel ou modal',
+        '<strong>Ctrl+Z / Cmd+Z</strong> — desfaz última marcação de presença',
+        'Lixeira nas tarefas — exclui permanentemente',
+        'Clicar no nome do aluno na presença — abre o perfil',
+      ])),
+    ].join(''),
+  };
+
+  return `
+  <div class="overlay" id="modal-overlay" style="align-items:stretch;padding:0;background:rgba(96,0,156,.15)">
+    <div style="background:#fff;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 32px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <div>
+          <div style="font-family:var(--fh);font-size:20px;font-weight:700;color:var(--brand)">Manual de Uso</div>
+          <div style="font-size:12.5px;color:var(--t4);margin-top:2px">Guia por perfil de usuário</div>
+        </div>
+        <button class="btn-icon" data-close-modal>${I.x}</button>
+      </div>
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 32px">
+        ${tabs.map(t=>`<div class="tab ${tab===t.id?'active':''}" style="cursor:pointer" data-manual-tab="${t.id}">${t.label}</div>`).join('')}
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:32px;max-width:800px;width:100%;margin:0 auto">
+        ${content[tab]||''}
+      </div>
+    </div>
+  </div>`;
+}
+
+
+function buildCentralPage() {
+  const u = state.user;
+  const hoje = now();
+  const fim7 = addDays(hoje, 7);
+  const filtro = state.centralFiltro || '7dias';
+
+  // --- TAREFAS ---
+  const minhasTarefas = getMinhasTarefas();
+  const tarefasSemana = minhasTarefas.filter(t => {
+    if (t.done) return false;
+    if (filtro === 'pendentes') return true;
+    return t.prazo && t.prazo >= hoje && t.prazo <= fim7;
+  }).sort((a,b)=>(a.prazo||'z').localeCompare(b.prazo||'z'));
+
+  // --- AULAS DA SEMANA ---
+  const DIAS_PT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const MESES_PT2 = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const aulasSemana = [];
+  for (const t of state.turmas.filter(t2=>!t2.concluida)) {
+    for (const ad of getAulasDaTurma(t.id)) {
+      if (ad.bloco === '11') continue;
+      const info = ((state.aulasDates||{})[t.id]||{})[ad.id];
+      if (!info?.data) continue;
+      if (info.data >= hoje && info.data <= fim7) {
+        aulasSemana.push({turma: t, ad, info});
+      }
+    }
+  }
+  aulasSemana.sort((a,b)=>(a.info.data||'').localeCompare(b.info.data||''));
+
+  // --- REUNIÕES DA SEMANA ---
+  const reunioesSemana = [];
+  for (const a of state.alunos) {
+    for (const r of (a.reunioes||[])) {
+      if (r.realizada) continue;
+      if (!r.data) continue;
+      if (filtro === '7dias' && (r.data < hoje || r.data > fim7)) continue;
+      if (filtro === 'pendentes' && r.data < hoje) continue;
+      // Só minhas reuniões (responsavel ou colab)
+      const respId = PROFILES.find(p=>p.name===a.responsavel)?.id;
+      if (!isGod() && !isBruna() && respId !== u?.id) continue;
+      reunioesSemana.push({aluno: a, reu: r});
+    }
+  }
+  reunioesSemana.sort((a,b)=>(a.reu.data||'').localeCompare(b.reu.data||''));
+
+  // --- Formatar data ---
+  function fmtDia(d) {
+    if (!d) return '—';
+    const dt = new Date(d+'T12:00');
+    return `${DIAS_PT[dt.getDay()]}, ${dt.getDate()} ${MESES_PT2[dt.getMonth()]}`;
+  }
+
+  // --- RENDER ---
+  const greeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Bom dia';
+    if (h < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
+
+  const pillTarefa = (t) => {
+    const atrasada = t.prazo && t.prazo < hoje;
+    const urgente = t.prazo && t.prazo <= addDays(hoje,2);
+    if (atrasada) return '<span class="pill pill-red" style="font-size:10px">Atrasada</span>';
+    if (urgente)  return '<span class="pill pill-amber" style="font-size:10px">Urgente</span>';
+    return t.prazo ? `<span class="pill pill-gray" style="font-size:10px">${fmtDia(t.prazo)}</span>` : '';
+  };
+
+  return `
+  <div class="page">
+    <div class="page-hdr" style="padding-bottom:12px">
+      <div>
+        <div class="page-title">${greeting()}, ${u?.name?.split(' ')[0]||''}! 👋</div>
+        <div class="page-sub">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn ${filtro==='7dias'?'btn-primary':'btn-ghost'} btn-sm" data-central-filtro="7dias">Próximos 7 dias</button>
+        <button class="btn ${filtro==='pendentes'?'btn-primary':'btn-ghost'} btn-sm" data-central-filtro="pendentes">Todos pendentes</button>
+      </div>
+    </div>
+    <div class="page-body" style="padding-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+
+      <!-- TAREFAS -->
+      <div>
+        <div class="section-title" style="margin-bottom:12px">Tarefas (${tarefasSemana.length})</div>
+        ${tarefasSemana.length === 0 ? `
+          <div style="padding:24px;text-align:center;color:var(--t4);font-size:13px;background:#fff;border:1px solid var(--border);border-radius:var(--r2)">
+            Nenhuma tarefa ${filtro==='7dias'?'para os próximos 7 dias':'pendente'} 🎉
+          </div>
+        ` : tarefasSemana.map(t => `
+          <div style="padding:12px 14px;border:1px solid var(--border);border-radius:var(--r2);margin-bottom:8px;background:#fff;display:flex;align-items:flex-start;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500;color:var(--t1);display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                ${t.alunoNome ? `<span style="color:var(--brand-h);cursor:pointer;font-weight:600" data-open-aluno="${t.alunoId}" data-open-tab="reunioes">${t.alunoNome}</span> —` : ''}
+                ${t.titulo}
+              </div>
+              <div style="margin-top:5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                ${pillTarefa(t)}
+                ${t.responsavel !== u?.id ? `<span style="font-size:11px;color:var(--amber-t)">↩ de ${PROFILES.find(p=>p.id===t.responsavel)?.name||t.responsavel}</span>` : ''}
+              </div>
+            </div>
+            <div class="task-check ${t.done?'done':''}" data-toggle-task="${t.id}" style="flex-shrink:0;margin-top:2px"></div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- COLUNA DIREITA: aulas + reuniões -->
+      <div>
+        <!-- AULAS -->
+        <div class="section-title" style="margin-bottom:12px">Aulas da semana (${aulasSemana.length})</div>
+        ${aulasSemana.length === 0 ? `
+          <div style="padding:24px;text-align:center;color:var(--t4);font-size:13px;background:#fff;border:1px solid var(--border);border-radius:var(--r2);margin-bottom:20px">
+            Nenhuma aula nos próximos 7 dias
+          </div>
+        ` : aulasSemana.map(({turma: t2, ad, info}) => `
+          <div style="padding:12px 14px;border:1px solid var(--border);border-left:3px solid var(--brand);border-radius:var(--r2);margin-bottom:8px;background:#fff;cursor:pointer" data-nav-turma="${t2.id}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--t1)">${ad.label.split('—').slice(1).join('—').trim()||ad.label}</div>
+                <div style="font-size:12px;color:var(--t4);margin-top:2px">Turma ${t2.nome} · ${info.hora||'Horário a definir'}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div style="font-size:12px;font-weight:600;color:var(--brand)">${fmtDia(info.data)}</div>
+                ${info.resp ? `<div style="font-size:11px;color:var(--t4);margin-top:2px">${info.resp}</div>` : ''}
+              </div>
+            </div>
+          </div>
+        `).join('')}
+
+        <!-- REUNIÕES -->
+        <div class="section-title" style="margin-top:20px;margin-bottom:12px">Reuniões (${reunioesSemana.length})</div>
+        ${reunioesSemana.length === 0 ? `
+          <div style="padding:24px;text-align:center;color:var(--t4);font-size:13px;background:#fff;border:1px solid var(--border);border-radius:var(--r2)">
+            Nenhuma reunião ${filtro==='7dias'?'para os próximos 7 dias':'pendente'}
+          </div>
+        ` : reunioesSemana.map(({aluno: a2, reu}) => `
+          <div style="padding:12px 14px;border:1px solid var(--border);border-left:3px solid #06D4D4;border-radius:var(--r2);margin-bottom:8px;background:#fff;cursor:pointer" data-open-aluno="${a2.id}" data-open-tab="reunioes">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--t1)">${a2.nome.split(' ').slice(0,2).join(' ')}</div>
+                <div style="font-size:12px;color:var(--t4);margin-top:2px">${reu.tipo||'Reunião'} ${reu.hora?'· '+reu.hora:''}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div style="font-size:12px;font-weight:600;color:#06D4D4">${fmtDia(reu.data)}</div>
+                <div style="font-size:11px;color:var(--t4);margin-top:2px">Turma ${a2.turma||'—'}</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
     </div>
   </div>`;
 }
