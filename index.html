@@ -886,6 +886,7 @@ let state = {
   editandoAluno: false,
   editForm: {},
   expandedAulas: {},
+  turmasAntigasSel: null,
   linkEnviado: {},  // {tid:{aulaId:{alunoId:bool}}} — separate from presença state
   aulaAberta: {},
   showConcluidas: false,
@@ -1246,6 +1247,7 @@ function buildSidebar() {
   const nVencendo = tarefasVencendo.length;
   const nAtrasadas = tarefasVencendo.filter(t => t.prazo < hojeStr).length;
   const isAdminOnly = u.id === 'admin';
+  const concluidas = state.turmas.filter(t => t.concluida);
   const nav = isAdminOnly ? [
     {id:'admin', label:'Admin', icon:I.adminIcon},
   ] : [
@@ -1257,6 +1259,7 @@ function buildSidebar() {
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
     {id:'minhas-reunioes', label:'Minhas Reuniões', icon:I.cal},
     {id:'kanban', label:'Situação das Turmas', icon:I.kanban},
+    ...(concluidas.length > 0 ? [{id:'turmas-antigas', label:'Turmas Antigas', icon:I.turmas}] : []),
   ];
   return `
     <div class="sb-head">
@@ -1314,6 +1317,7 @@ function buildMain() {
   if (state.page === 'monitoramento')  return buildMonitoramentoPage();
   if (state.page === 'minhas-reunioes') return buildMinhasReunioesPage();
   if (state.page === 'kanban')  return buildKanbanPage();
+  if (state.page === 'turmas-antigas') return buildTurmasAntigasPage();
   return '<div class="page"><div class="empty-state">Página não encontrada</div></div>';
 }
 
@@ -1323,7 +1327,8 @@ function buildMain() {
 function buildTurmasPage() {
   const ativas     = state.turmas.filter(t=>!t.concluida);
   const concluidas = state.turmas.filter(t=> t.concluida);
-  const totalAtivos = state.alunos.filter(a=>a.status==='ativo').length;
+  const turmasConcluidasIds = new Set(state.turmas.filter(t=>t.concluida).map(t=>t.id));
+  const totalAtivos = state.alunos.filter(a=>a.status==='ativo' && !turmasConcluidasIds.has(a.turma)).length;
   const totalChurn  = state.alunos.filter(a=>a.status==='churn').length;
   const totalRisco  = state.alunos.filter(a=>a.status==='ativo'&&isRisco(a)).length;
 
@@ -1639,8 +1644,8 @@ function buildAulaSection(t, alunos, ad) {
                 </td>
                 <td style="color:var(--t4);font-size:12px">${a.responsavel||'—'}</td>
                 <td style="text-align:center">
-                  <div class="check-box ${done?'done':''}" data-tick-11="${ad.id}" data-aluno-id="${a.id}" style="margin:0 auto">
-                    ${done ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+                  <div data-aula11="${ad.id}" data-aluno-id="${a.id}" style="margin:0 auto;width:18px;height:18px;border-radius:4px;border:1.5px solid ${done?'var(--brand)':'var(--t4)'};background:${done?'var(--brand)':'transparent'};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s">
+                    ${done ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="11" height="11" style="display:block;pointer-events:none"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
                   </div>
                 </td>
                 <td style="font-size:12px;color:var(--t4)">
@@ -1904,7 +1909,8 @@ function buildMedicosPage() {
     state.filtroMedicos = 'meus';
     state.filtroMedicosSet = true;
   }
-  let lista = [...state.alunos];
+  const _turmasConclIds = new Set(state.turmas.filter(t=>t.concluida).map(t=>t.id));
+  let lista = state.alunos.filter(a => !_turmasConclIds.has(a.turma));
   const uid = state.user?.id;
 
   // Filter
@@ -1958,7 +1964,7 @@ function buildMedicosPage() {
     <div class="page-hdr">
       <div>
         <div class="page-title">Médicos</div>
-        <div class="page-sub">${lista.length} de ${state.alunos.length} alunos</div>
+        <div class="page-sub">${lista.length} de ${state.alunos.filter(a=>!_turmasConclIds.has(a.turma)).length} alunos</div>
       </div>
       <div style="display:flex;gap:8px">
         ${isGod() ? `<button class="btn btn-primary" data-action="novo-medico">${I.plus} Novo Médico</button>` : ''}
@@ -3124,6 +3130,7 @@ function attachEvents() {
       if (a === 'editar-aluno') { state.editandoAluno=true; state.editForm={}; state.alunoTab='info'; render(); }
       if (a === 'cancelar-edicao') { state.editandoAluno=false; state.editForm={}; render(); }
       if (a === 'back-turmas') { state.selTurma = null; render(); }
+      if (a === 'voltar-turmas-antigas') { state.turmasAntigasSel = null; render(); }
       if (a === 'editar-turma') { const t=state.turmas.find(x=>x.id===state.selTurma); state.modal={type:'edit-turma', turma:t}; render(); }
       if (a === 'salvar-turma') salvarTurma();
       if (a === 'salvar-medico') salvarMedico();
@@ -3811,12 +3818,12 @@ function attachEvents() {
   });
 
   // Tick 1:1 directly in cronograma — usando event delegation para garantir funcionamento
-  document.querySelectorAll('[data-tick-11]').forEach(el => {
+  document.querySelectorAll('[data-aula11]').forEach(el => {
     el.style.cursor = 'pointer';
     el.addEventListener('click', e => {
       e.stopPropagation();
       e.preventDefault();
-      const aulaId = el.dataset.tick11;
+      const aulaId = el.dataset.aula11;
       const alunoId = el.dataset.alunoId;
       // Pegar label do ad na turma atual (suporta renames)
       const tid = state.selTurma;
@@ -3834,6 +3841,15 @@ function attachEvents() {
         al.reunioes.push({id:'r_'+Date.now(), tipo:aulaLabel, data:new Date().toISOString().slice(0,10), realizada:true, notas:'', proxPassos:''});
       }
       scheduleSave();
+      render();
+    });
+  });
+
+  // Turmas antigas
+  document.querySelectorAll('[data-abrir-turma-antiga]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      state.turmasAntigasSel = el.dataset.abrirTurmaAntiga;
       render();
     });
   });
@@ -6189,6 +6205,119 @@ function buildMinhasReunioesPage() {
         <div class="section-title">Realizadas</div>
         ${realizadas.map(r => buildReuItem(r, true)).join('')}
       ` : ''}
+    </div>
+  </div>`;
+}
+
+
+function buildTurmasAntigasPage() {
+  const concluidas = state.turmas.filter(t => t.concluida);
+  const selTurma = state.turmasAntigasSel || null;
+
+  if (selTurma) {
+    const t = concluidas.find(x => x.id === selTurma);
+    if (!t) { state.turmasAntigasSel = null; render(); return ''; }
+    const alunos = state.alunos.filter(a => a.turma === t.id);
+    const marcadas = state.presenca[t.id] || {};
+    const aulasComPresenca = getAulasDaTurma(t.id).filter(ad => ad.bloco !== '11');
+
+    return `
+    <div class="page">
+      <div class="page-hdr">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-ghost btn-sm" data-action="voltar-turmas-antigas">${I.chevLeft||'←'} Turmas Antigas</button>
+          <div>
+            <div class="page-title">Turma ${t.nome} <span class="pill pill-green" style="font-size:11px">Concluída</span></div>
+            <div class="page-sub">${alunos.length} aluno${alunos.length!==1?'s':''} · ${t.inicio?fmt(t.inicio):'—'} → ${t.fim_previsto?fmt(t.fim_previsto):'—'}</div>
+          </div>
+        </div>
+      </div>
+      <div class="page-body">
+        <div class="section-title">Médicos</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">
+          ${alunos.length === 0 ? '<div style="color:var(--t4);font-size:13px">Nenhum médico nesta turma</div>' : alunos.map(a => `
+            <div style="padding:12px 14px;border:1px solid var(--border);border-radius:var(--r2);background:var(--bg-s);cursor:pointer;display:flex;align-items:center;justify-content:space-between"
+              data-open-aluno="${a.id}">
+              <div>
+                <div style="font-family:var(--fh);font-weight:600;font-size:13.5px;color:var(--t1)">${a.nome}</div>
+                <div style="font-size:12px;color:var(--t4);margin-top:2px">${a.especialidade||''} ${a.cidade?'· '+a.cidade:''}</div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <span class="pill ${a.taxa_presenca>=75?'pill-green':a.taxa_presenca>=50?'pill-amber':'pill-red'}" style="font-size:10.5px">${a.taxa_presenca||0}%</span>
+                <span style="font-size:11px;color:var(--t4)">›</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="section-title">Presença por Aula</div>
+        <div style="overflow-x:auto">
+          <table class="tbl" style="min-width:500px">
+            <thead><tr>
+              <th>Aluno</th>
+              ${aulasComPresenca.map(ad=>`<th style="text-align:center;font-size:9px;max-width:70px;white-space:normal">${ad.label.split('—')[0].trim()}</th>`).join('')}
+              <th style="text-align:center">%</th>
+            </tr></thead>
+            <tbody>
+              ${alunos.map(a => {
+                const vals = aulasComPresenca.map(ad => (marcadas[ad.id]||{})[a.id]);
+                const presentes = vals.filter(v=>v==='sim'||v==='sim2'||v==='link').length;
+                const realizadas = vals.filter(v=>v&&v!=='').length;
+                const taxa = realizadas ? Math.round(presentes/realizadas*100) : 0;
+                return `<tr>
+                  <td style="font-weight:500;color:var(--t1)">${a.nome.split(' ')[0]} ${a.nome.split(' ').slice(-1)[0]}</td>
+                  ${vals.map(v => {
+                    const icon = v==='sim'?'✓':v==='sim2'?'●':v==='nao'?'✗':v==='link'?'L':'—';
+                    const col = v==='sim'?'var(--green-t)':v==='sim2'?'var(--amber-t)':v==='nao'?'var(--red-t)':v==='link'?'var(--amber-t)':'var(--t4)';
+                    return `<td style="text-align:center;font-size:13px;font-weight:600;color:${col}">${icon}</td>`;
+                  }).join('')}
+                  <td style="text-align:center;font-family:var(--fh);font-weight:600;font-size:12px;color:${taxa>=75?'var(--green)':taxa>=50?'var(--amber)':'var(--red)'}">${taxa}%</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Lista de turmas concluídas
+  return `
+  <div class="page">
+    <div class="page-hdr">
+      <div>
+        <div class="page-title">Turmas Antigas</div>
+        <div class="page-sub">${concluidas.length} turma${concluidas.length!==1?'s':''} concluída${concluidas.length!==1?'s':''}</div>
+      </div>
+    </div>
+    <div class="page-body">
+      ${concluidas.length === 0 ? `
+        <div class="empty-state">
+          ${I.turmas}
+          <p>Nenhuma turma concluída ainda</p>
+          <p style="font-size:12.5px;color:var(--t4);margin-top:6px">Quando uma turma for concluída, ela aparecerá aqui</p>
+        </div>
+      ` : concluidas.map(t => {
+        const alunos = state.alunos.filter(a => a.turma === t.id);
+        const s = getTurmaStats(t.id);
+        return `
+        <div style="padding:16px;border:1px solid rgba(34,197,94,.2);border-radius:var(--r2);background:rgba(34,197,94,.03);margin-bottom:10px;cursor:pointer"
+          data-abrir-turma-antiga="${t.id}">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:40px;height:40px;border-radius:9px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:14px;color:var(--green-t)">✓</div>
+              <div>
+                <div style="font-family:var(--fh);font-weight:600;font-size:15px;color:var(--t2)">Turma ${t.nome}</div>
+                <div style="font-size:12px;color:var(--t4);margin-top:2px">${alunos.length} médico${alunos.length!==1?'s':''} · ${t.inicio?fmt(t.inicio):'—'} → ${t.fim_previsto?fmt(t.fim_previsto):'—'}</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="pill pill-green" style="font-size:10.5px">${s.taxa}% presença</span>
+              <span style="font-size:12px;color:var(--t4)">›</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
     </div>
   </div>`;
 }
