@@ -1895,7 +1895,7 @@ function buildTarefaItem(t, done) {
     </div>
     <div style="flex:1;min-width:0">
       <div style="font-weight:500;font-size:13px;color:var(--t1);${done?'text-decoration:line-through;color:var(--t4)':''}">
-        ${t.alunoNome ? `<span style="color:var(--brand-h);cursor:pointer" data-open-aluno="${t.alunoId}" data-open-tab="reunioes">${t.alunoNome}</span> — ` : ''}${t.titulo}
+        ${t.alunoNome ? `<span style="color:var(--brand-h);cursor:pointer" data-open-aluno="${t.alunoId}" data-open-tab="${(t.tipo==='enviar-forms'||t.tipo==='verificar-forms'||t.titulo?.startsWith('Mandar forms')||t.titulo?.startsWith('Verificar recebimento'))?'etapas':'reunioes'}">${t.alunoNome}</span> — ` : ''}${t.titulo}
       </div>
       <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap">
         ${t.prazo ? `<span style="font-size:11.5px;color:${t.prazo<=now()?'var(--red-t)':t.prazo<=addDays(now(),3)?'var(--amber-t)':'var(--t4)'}">${fmt(t.prazo)}${t.hora?' · '+t.hora:''}${t.prazo<=now()?' · vencida':''}` + '</span>' : ''}
@@ -3511,6 +3511,23 @@ function attachEvents() {
           }
         }
       }
+      // Concluiu "Mandar forms de onboarding" → criar tarefa de verificar recebimento
+      if (t.done && (t.tipo === 'enviar-forms' || t.titulo?.startsWith('Mandar forms de onboarding')) && t.alunoId) {
+        const al2 = state.alunos.find(a=>a.id===t.alunoId);
+        const nomeFirst2 = al2?.nome?.split(' ')[0]||'';
+        const prazoVerif = addDays(now(), 7);
+        const existsVerif = state.tarefas.some(x=>!x.done && x.alunoId===t.alunoId && x.tipo==='verificar-forms');
+        if (!existsVerif) addTarefa({
+          titulo: 'Verificar recebimento do forms — ' + nomeFirst2,
+          responsavel: 'bruna',
+          alunoId: t.alunoId,
+          alunoNome: al2?.nome,
+          prio: 'alta',
+          prazo: prazoVerif,
+          tipo: 'verificar-forms',
+          descricao: 'Confirmar que o médico recebeu e preencheu o formulário de onboarding'
+        });
+      }
       if (t.done && t.tipo === 'cobrar-video' && t.alunoId && t.aulaId) {
         // Mark presença as 'reset' automatically
         const tid = state.alunos.find(a=>a.id===t.alunoId)?.turma;
@@ -4185,7 +4202,7 @@ function salvarMedico() {
   state.alunos.push(novo);
   // Trigger task for Bruna — mandar forms de onboarding (cadeia segue após forms recebido)
   const prazoForms = addDays(now(), 3);
-  addTarefa({titulo:'Mandar forms de onboarding para ' + nome.split(' ')[0], responsavel:'bruna', alunoId:novo.id, alunoNome:nome, prio:'alta', prazo:prazoForms, descricao:'Novo médico cadastrado — enviar formulário de onboarding'});
+  addTarefa({titulo:'Mandar forms de onboarding para ' + nome.split(' ')[0], responsavel:'bruna', alunoId:novo.id, alunoNome:nome, prio:'alta', prazo:prazoForms, tipo:'enviar-forms', descricao:'Novo médico cadastrado — enviar formulário de onboarding'});
   state.modal = null;
   showToast(`${nome} cadastrado`);
   scheduleSave();
