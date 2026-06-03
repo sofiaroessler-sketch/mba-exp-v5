@@ -1139,8 +1139,8 @@ function buildApp() {
   return `
     <div id="sidebar">${buildSidebar()}</div>
     <div id="main">${buildMain()}</div>
-    ${state.modal ? buildModal() : ''}
     ${state.selAluno ? buildDetailPanel() : ''}
+    ${state.modal ? buildModal() : ''}
     ${state.toast ? `<div class="toast ${state.toast.type}">${state.toast.msg}</div>` : ''}
     ${setupPopup}
   `;
@@ -2386,6 +2386,25 @@ function buildDetailReunioes(a) {
         <button class="btn btn-primary btn-sm" data-action="nova-reuniao">${I.plus} Agendar Reunião</button>
       </div>
     </div>
+    ${(() => {
+      // Pendências: tarefas "Marcar X com Y" que ainda não têm reunião agendada/realizada
+      const tipos11 = ['1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Treinamento da Secretária'];
+      const pendentes = tipos11.filter(tipo => {
+        const temTarefa = state.tarefas.some(t => !t.done && t.alunoId===a.id && t.titulo.includes(tipo.replace('Treinamento da Secretária','Treinamento da Secretária')));
+        const temReuniao = (a.reunioes||[]).some(r => r.tipo===tipo);
+        return temTarefa && !temReuniao;
+      });
+      if (!pendentes.length) return '';
+      return `<div style="margin-bottom:16px;border:1px solid rgba(245,158,11,.35);border-radius:var(--r2);background:rgba(245,158,11,.07);padding:12px 14px">
+        <div style="font-size:11px;font-weight:600;color:var(--amber-t);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">Pendente de agendamento</div>
+        ${pendentes.map(tipo => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(245,158,11,.15)">
+            <span style="font-size:13px;color:var(--t2)">${tipo}</span>
+            <button class="btn btn-primary btn-xs" data-agendar-tipo="${tipo}" data-aluno-id="${a.id}">Agendar</button>
+          </div>
+        `).join('')}
+      </div>`;
+    })()}
 
     ${(() => {
       // Anotações avulsas de reunião (cardzinhos com data + autor)
@@ -2704,13 +2723,30 @@ function buildModalNovaTarefa() {
   `);
 }
 
+
+const REUNIAO_TIPOS = [
+  'Sessão Estratégica Inicial',
+  'Reunião Individual',
+  'Reunião de Onboarding',
+  'Reunião Fin/Leads',
+  '1:1 — 0',
+  '1:1 — 1',
+  '1:1 — 2',
+  '1:1 — 3',
+  '1:1 — 4',
+  'Treinamento da Secretária',
+  'Outro',
+];
 function buildModalNovaReuniao() {
   const tipos = REUNIAO_TIPOS.map(t=>`<option value="${t}">${t}</option>`).join('');
   const a = state.alunos.find(x=>x.id===state.selAluno);
   return mWrap('Agendar Reunião', `
     <div style="margin-bottom:14px;font-size:13px;color:var(--t4)">Médico: <strong style="color:var(--t1)">${a?.nome||''}</strong></div>
     <div class="field-row">
-      <div class="field"><label class="lbl">Tipo *</label><select class="inp" id="m-reu-tipo"><option value="">Selecione</option>${tipos}</select></div>
+      <div class="field"><label class="lbl">Tipo *</label><select class="inp" id="m-reu-tipo">
+        <option value="">Selecione</option>
+        ${REUNIAO_TIPOS.map(t=>`<option value="${t}" ${t===(state.modal?.preTipo||'')?'selected':''}>${t}</option>`).join('')}
+      </select></div>
       <div class="field"><label class="lbl">Data *</label><input class="inp" type="date" id="m-reu-data"></div>
       <div class="field"><label class="lbl">Horário início</label><input class="inp" type="time" id="m-reu-hora" placeholder="00:00"></div>
       <div class="field"><label class="lbl">Horário término</label><input class="inp" type="time" id="m-reu-hora-fim" placeholder="00:00"></div>
@@ -3116,7 +3152,7 @@ function attachEvents() {
       if (a === 'novo-medico') { state.modal = {type:'novo-medico'}; render(); }
       if (a === 'novo-medico-turma') { state.modal = {type:'novo-medico', preTurma: state.selTurma}; render(); }
       if (a === 'nova-tarefa') { state.modal = {type:'nova-tarefa'}; render(); }
-      if (a === 'nova-reuniao') { state.modal = {type:'nova-reuniao'}; render(); }
+      if (a === 'nova-reuniao') { state.modal = {type:'nova-reuniao', preTipo:''}; render(); }
       if (a === 'nova-reuniao-calendario') { state.modal = {type:'nova-reuniao-calendario'}; render(); }
       if (a === 'marcar-aula') { state.modal = {type:'marcar-aula'}; render(); }
       if (a === 'editar-aluno') { state.editandoAluno=true; state.editForm={}; state.alunoTab='info'; render(); }
@@ -3218,6 +3254,18 @@ function attachEvents() {
     state.obAdding = false; state.obEditId = null; state.rnotaAdding = false; state.rnotaEditId = null;
     render();
   }));
+
+  // Botão agendar reunião pendente (pré-preenche tipo no modal)
+  document.querySelectorAll('[data-agendar-tipo]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      const alunoId = el.dataset.alunoId;
+      if (alunoId) state.selAluno = alunoId;
+      state.modal = {type:'nova-reuniao', preTipo: el.dataset.agendarTipo};
+      render();
+    });
+  });
 
   // Caixinhas de ok de planilha
   document.querySelectorAll('.planilha-ok-btn[data-planilha-ok]').forEach(el => {
@@ -3508,8 +3556,8 @@ function attachEvents() {
       const trigT=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.alunoId===alunoId&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:respId,alunoId,alunoNome:al?.nome,prio:'alta'}); };
       // alerta para a Bruna, por turma (não duplica por turma)
       const trigBruna=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.responsavel==='bruna'&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:'bruna',prio:'alta'}); };
-      if(next==='sim'||next==='sim2'){
-        const ok=(id)=>{const v=(state.presenca[tid][id]||{})[alunoId];return v==='sim'||v==='sim2'||v==='link';};
+      if(next==='sim'||next==='sim2'||next==='nao'||next==='link'){
+        const ok=(id)=>{const v=(state.presenca[tid][id]||{})[alunoId];return v==='sim'||v==='sim2'||v==='link'||v==='nao';};
         // Pós Aula 2 → consultor marca Treinamento da Secretária
         if(['a1','a2'].includes(aulaId)&&ok('a2')) trigT('Marcar Treinamento da Secretária com '+(al?.nome||''));
         if(['a1','a2','a3','a4'].includes(aulaId)&&ok('a4')) {
@@ -3520,6 +3568,16 @@ function attachEvents() {
         if(['a5','a6','a7','a8','a9'].includes(aulaId)&&ok('a9')) trigT('Marcar 1:1 — 1 com '+(al?.nome||''));
         if(aulaId==='a10_1') trigT('Marcar 1:1 — 3 com '+(al?.nome||''));
         if(aulaId==='a10_2') trigT('Marcar 1:1 — 4 com '+(al?.nome||''));
+      }
+      // Reset → remover tarefas de 1:1/secretária relacionadas ao aluno
+      if(next==='reset'||next===undefined||next===null){
+        const nomeAl=al?.nome||'';
+        state.tarefas.forEach(t=>{
+          if(t.alunoId===alunoId && (
+            t.titulo.startsWith('Marcar 1:1') ||
+            t.titulo.startsWith('Marcar Treinamento da Secretária')
+          )) t.done=true;
+        });
       }
       recalcTaxaPresenca(tid);
       scheduleSave();
@@ -3570,14 +3628,20 @@ function attachEvents() {
           descricao: `Verificar se assistiu: ${AULAS_DEF.find(a=>a.id===aulaId)?.label||aulaId}`
         });
       }
-      // Reset → auto-complete cobrar-video task
+      // Reset → auto-complete cobrar-video task + remover tarefas 1:1/secretária
       if (op === 'reset') {
-        state.tarefas.forEach(t=>{ if(t.alunoId===alunoId && t.aulaId===aulaId && t.tipo==='cobrar-video') t.done=true; });
+        state.tarefas.forEach(t=>{
+          if(t.alunoId===alunoId && t.aulaId===aulaId && t.tipo==='cobrar-video') t.done=true;
+          if(t.alunoId===alunoId && (
+            t.titulo.startsWith('Marcar 1:1') ||
+            t.titulo.startsWith('Marcar Treinamento da Secretária')
+          )) t.done=true;
+        });
       }
-      // Check 1:1 triggers — only on 'sim' or meaningful mark
-      if (op === 'sim' || op === 'link') {
+      // Check 1:1 triggers — qualquer marca de presença (sim, sim2, nao, link)
+      if (op === 'sim' || op === 'sim2' || op === 'nao' || op === 'link') {
         const pTid = state.presenca[tid];
-        const marked = (id) => { const m = (pTid[id]||{})[alunoId]; return m==='sim'||m==='link'; };
+        const marked = (id) => { const m = (pTid[id]||{})[alunoId]; return m==='sim'||m==='sim2'||m==='nao'||m==='link'; };
         const trigBruna=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.responsavel==='bruna'&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:'bruna',prio:'alta'}); };
         // Pós Aula 2 → consultor marca Treinamento da Secretária
         if (['a1','a2'].includes(aulaId) && marked('a2'))
