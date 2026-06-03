@@ -1264,8 +1264,10 @@ function buildLoginPage() {
 function buildSidebar() {
   const u = state.user;
   const minhas = getMinhasTarefas().filter(t=>!t.done).length;
+  const _turmasConclBadge = new Set(state.turmas.filter(t=>t.concluida).map(t=>t.id));
   const novosMedicos = state.alunos.filter(a => {
     if (a.status !== 'ativo') return false;
+    if (_turmasConclBadge.has(a.turma)) return false;
     const _et = state.etapas[a.id] || {};
     const _formsOk = _et.forms_status==='recebido' || _et.forms_done;
     const _todasOk = _formsOk && _et.ind_done && _et.onb_done && _et.fin_done;
@@ -1328,15 +1330,10 @@ function buildSidebar() {
         <span class="sb-uname" style="flex:1">${u.name}</span>
         <button class="sb-out" data-logout title="Sair" style="color:rgba(255,255,255,.4)">${I.logout}</button>
       </div>
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">
-        📖 Manual de Uso
-      </button>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
         ${I.logout} Sair
       </button>
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
 
     </div>
   `;
