@@ -369,6 +369,7 @@ async function saveStateToDb(retryCount = 0) {
     profiles:     state.profiles,
     reunioes:     state.reunioes,
     expandedAulas: state.expandedAulas || {},
+    passwordSet:  state.passwordSet || {},
   };
 
   try {
@@ -461,10 +462,14 @@ async function loadStateFromDb() {
       if (d.profiles) {
         state.profiles = d.profiles;
         d.profiles.forEach(p => {
-          if (!PROFILES.find(x=>x.id===p.id)) PROFILES.push({id:p.id, name:p.name, email:p.email||'', hasPassword:p.hasPassword||false});
-          else { const pp=PROFILES.find(x=>x.id===p.id); pp.name=p.name; pp.email=p.email||''; pp.hasPassword=p.hasPassword||false; }
+          // Usar passwordSet como fonte de verdade secundária
+          const hasPwd = p.hasPassword === true || !!(d.passwordSet||{})[p.id];
+          if (!PROFILES.find(x=>x.id===p.id)) PROFILES.push({id:p.id, name:p.name, email:p.email||'', hasPassword:hasPwd});
+          else { const pp=PROFILES.find(x=>x.id===p.id); pp.name=p.name; pp.email=p.email||''; pp.hasPassword=hasPwd; }
+          if (hasPwd) p.hasPassword = true; // garantir no state.profiles também
         });
       }
+      if (d.passwordSet) state.passwordSet = d.passwordSet;
       if (d.reunioes)       state.reunioes     = d.reunioes;
       if (d.aulasCustom)    state.aulasCustom  = d.aulasCustom;
     }
@@ -911,6 +916,7 @@ let state = {
   expandedAulas: {},
   turmasAntigasSel: null,
   manualTab: 'consultores',
+  passwordSet: {},
   _undoStack: [], // snapshots de presença para undo
   linkEnviado: {},  // {tid:{aulaId:{alunoId:bool}}} — separate from presença state
   aulaAberta: {},
@@ -2653,18 +2659,24 @@ function mWrap(titulo, corpo, footer) {
 }
 
 function buildModalChangePwd() {
+  const u = state.user;
+  const email = (state.profiles.find(p=>p.id===u?.id)||{}).email||'';
   return `
   <div class="overlay" id="modal-overlay">
     <div class="modal" style="max-width:380px" onclick="event.stopPropagation()">
       <div class="modal-hdr"><div class="modal-title">Trocar Senha</div><button class="btn-icon" data-close-modal>${I.x}</button></div>
       <div class="modal-body">
+        ${!email ? `<div class="login-err" style="display:block;margin-bottom:12px">Nenhum email cadastrado neste perfil. Peça ao administrador para configurar.</div>` : `
+        <div class="field"><label class="lbl">Email</label><input class="inp" type="email" id="cp-email" value="${email}" readonly style="opacity:.6"></div>
+        <div class="field"><label class="lbl">Senha atual</label><input class="inp" type="password" id="cp-old" placeholder="Sua senha atual" autocomplete="current-password"></div>
         <div class="field"><label class="lbl">Nova Senha</label><input class="inp" type="password" id="cp-pwd1" placeholder="Mínimo 6 caracteres" autocomplete="new-password"></div>
-        <div class="field"><label class="lbl">Confirmar Senha</label><input class="inp" type="password" id="cp-pwd2" placeholder="Repita a senha" autocomplete="new-password"></div>
+        <div class="field"><label class="lbl">Confirmar nova senha</label><input class="inp" type="password" id="cp-pwd2" placeholder="Repita a nova senha" autocomplete="new-password"></div>
+        `}
         <div id="cp-err" style="display:none" class="login-err"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close-modal>Cancelar</button>
-        <button class="btn btn-primary" id="btn-cp-save">Salvar</button>
+        ${email ? `<button class="btn btn-primary" id="btn-cp-save">Salvar</button>` : ''}
       </div>
     </div>
   </div>`;
@@ -3027,6 +3039,8 @@ function attachEvents() {
       // Atualizar também no PROFILES global
       const pp2 = PROFILES.find(x=>x.id===pid);
       if (pp2) { pp2.email = email; pp2.hasPassword = true; }
+      if (!state.passwordSet) state.passwordSet = {};
+      state.passwordSet[pid] = true;
       // Loga no app
       state.user = p || { id: pid, name: pid };
       state.loginMode = null;
@@ -3062,10 +3076,21 @@ function attachEvents() {
       const pid = state.setupProfile;
       const p = state.profiles.find(x=>x.id===pid) || { id: pid, name: pid };
       if (p) p.hasPassword = true;
+      const ppS = PROFILES.find(x=>x.id===pid);
+      if (ppS) ppS.hasPassword = true;
+      if (!state.passwordSet) state.passwordSet = {};
+      state.passwordSet[pid] = true;
       state.user = p;
       state.loginMode = null;
       state.setupProfile = null;
+      // Salva primeiro para persistir hasPassword=true, depois recarrega
+      await saveStateToDb();
       await loadStateFromDb();
+      // Garantir hasPassword após reload
+      const pS2 = state.profiles.find(x=>x.id===pid);
+      if (pS2) pS2.hasPassword = true;
+      const ppS2 = PROFILES.find(x=>x.id===pid);
+      if (ppS2) ppS2.hasPassword = true;
       await saveStateToDb();
       logAccess('login');
       render();
@@ -3163,19 +3188,28 @@ function attachEvents() {
 
   // Change password modal save
   document.getElementById('btn-cp-save')?.addEventListener('click', async () => {
+    const email = document.getElementById('cp-email')?.value?.trim();
+    const oldPwd = document.getElementById('cp-old')?.value;
     const p1 = document.getElementById('cp-pwd1')?.value;
     const p2 = document.getElementById('cp-pwd2')?.value;
     const errEl = document.getElementById('cp-err');
-    if (!p1 || p1.length < 6) { errEl.textContent='Mínimo 6 caracteres'; errEl.style.display='block'; return; }
+    if (!oldPwd) { errEl.textContent='Digite sua senha atual'; errEl.style.display='block'; return; }
+    if (!p1 || p1.length < 6) { errEl.textContent='Nova senha: mínimo 6 caracteres'; errEl.style.display='block'; return; }
     if (p1 !== p2) { errEl.textContent='As senhas não conferem'; errEl.style.display='block'; return; }
+    errEl.style.display = 'none';
     try {
       document.getElementById('btn-cp-save').textContent = 'Salvando...';
+      // 1. Fazer login com senha atual para obter token
+      await sbSignIn(email, oldPwd);
+      // 2. Atualizar senha
       await sbUpdatePassword(p1);
+      // 3. Fazer login com nova senha para manter sessão
+      await sbSignIn(email, p1);
       state.modal = null;
       showToast('Senha alterada com sucesso!', 'ok');
       render();
     } catch(e) {
-      errEl.textContent = e.message;
+      errEl.textContent = e.message?.includes('Invalid') ? 'Senha atual incorreta' : e.message;
       errEl.style.display = 'block';
       document.getElementById('btn-cp-save').textContent = 'Salvar';
     }
