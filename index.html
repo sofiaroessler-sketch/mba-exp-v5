@@ -1265,14 +1265,9 @@ function buildSidebar() {
   const u = state.user;
   const minhas = getMinhasTarefas().filter(t=>!t.done).length;
   const _turmasConclBadge = new Set(state.turmas.filter(t=>t.concluida).map(t=>t.id));
-  const novosMedicos = state.alunos.filter(a => {
-    if (a.status !== 'ativo') return false;
-    if (_turmasConclBadge.has(a.turma)) return false;
-    const _et = state.etapas[a.id] || {};
-    const _formsOk = _et.forms_status==='recebido' || _et.forms_done;
-    const _todasOk = _formsOk && _et.ind_done && _et.onb_done && _et.fin_done;
-    return !_todasOk;
-  }).length;
+  const novosMedicos = state.alunos.filter(a =>
+    a.status==='ativo' && !a.responsavel && !_turmasConclBadge.has(a.turma)
+  ).length;
   const semSenha = isYgor() ? state.profiles.filter(p => p.id !== 'admin' && !p.hasPassword).length : 0;
   // tarefas do usuário não concluídas, com prazo, que vencem em até 2 dias ou já passaram
   const hojeStr = new Date().toISOString().slice(0,10);
@@ -1984,13 +1979,7 @@ function buildMedicosPage() {
   } else if (state.filtroMedicos === 'churn') {
     lista = lista.filter(a => a.status==='churn');
   } else if (state.filtroMedicos === 'novos') {
-    lista = lista.filter(a => {
-      if (a.status !== 'ativo') return false;
-      const et = state.etapas[a.id] || {};
-      const formsOk = et.forms_status==='recebido' || et.forms_done;
-      const todasEtapasOk = formsOk && et.ind_done && et.onb_done && et.fin_done;
-      return !todasEtapasOk; // só aparece se NÃO tiver todas as etapas ok
-    });
+    lista = lista.filter(a => a.status==='ativo' && !a.responsavel);
   }
 
   if (state.filtroEspecialidade && state.filtroEspecialidade !== 'todas') {
@@ -3368,7 +3357,7 @@ function attachEvents() {
 
   // ESC fecha o perfil do médico ou o modal
   document.querySelectorAll('[data-manual-tab]').forEach(el => {
-    el.addEventListener('click', () => { state.manualTab = el.dataset.manualTab; render(); });
+    el.addEventListener('click', e => { e.stopPropagation(); state.manualTab = el.dataset.manualTab; render(); });
   });
 
   // Central filtros
@@ -7214,7 +7203,7 @@ function buildModalManual() {
 
   return `
   <div class="overlay" id="modal-overlay" style="align-items:stretch;padding:0;background:rgba(96,0,156,.15)">
-    <div style="background:#fff;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden">
+    <div style="background:#fff;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 32px;border-bottom:1px solid var(--border);flex-shrink:0">
         <div>
           <div style="font-family:var(--fh);font-size:20px;font-weight:700;color:var(--brand)">Manual de Uso</div>
