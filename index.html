@@ -3754,7 +3754,11 @@ function attachEvents() {
 
   document.getElementById('search-admin-medicos')?.addEventListener('input', e => {
     state.searchAdminMedicos = e.target.value;
-    render();
+    // Filtrar direto no DOM sem re-render (evita perder o foco)
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('#admin-medicos-list tr[data-aluno-row]').forEach(row => {
+      row.style.display = (!q || row.textContent.toLowerCase().includes(q)) ? '' : 'none';
+    });
   });
 
   // Presença CYCLE: Presente→sim(green)→sim2(yellow)→off
@@ -5325,10 +5329,10 @@ function buildAdminMedicos() {
     <div class="tbl-wrap">
       <table class="tbl">
         <thead><tr><th>Nome</th><th>Turma</th><th>Responsável</th><th>Status</th><th>Presença</th><th style="text-align:center">Ações</th></tr></thead>
-        <tbody>
+        <tbody id="admin-medicos-list">
           ${lista.map(a => {
             const taxaCls = a.taxa_presenca>=75?'pill-green':a.taxa_presenca>=50?'pill-amber':'pill-red';
-            return `<tr>
+            return `<tr data-aluno-row="${a.id}"
               <td style="font-weight:500;color:var(--t1);cursor:pointer" data-open-aluno="${a.id}" title="Ver perfil">${a.nome}</td>
               <td><span style="color:var(--brand-h)">${a.turma||'—'}</span></td>
               <td style="color:var(--t4)">${a.responsavel||'—'}</td>
