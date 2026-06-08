@@ -3051,11 +3051,8 @@ function attachEvents() {
       state.loginMode = null;
       state.setupProfile = null;
       state.showSetupPopup = false;
+      // Salva 2x para garantir persistência (sem loadStateFromDb que pode sobrescrever)
       await saveStateToDb();
-      await loadStateFromDb();
-      // Garantir após reload
-      if (!state.passwordSet) state.passwordSet = {};
-      state.passwordSet[pid] = hash;
       await saveStateToDb();
       logAccess('login');
       render();
@@ -3076,6 +3073,8 @@ function attachEvents() {
     try {
       const pid = state.setupProfile;
       const hash = await sha256(pass);
+      // Carregar estado mais recente antes de verificar (garante hash atualizado)
+      await loadStateFromDb();
       const savedHash = (state.passwordSet||{})[pid];
       if (!savedHash || hash !== savedHash) throw new Error('Senha incorreta');
       const p = state.profiles.find(x=>x.id===pid) || { id: pid, name: pid };
@@ -3196,14 +3195,11 @@ function attachEvents() {
       const newHash = await sha256(p1);
       if (!state.passwordSet) state.passwordSet = {};
       state.passwordSet[pid] = newHash;
+      // Salvar sem loadStateFromDb para não sobrescrever o novo hash
       await saveStateToDb();
-      // Recarregar para garantir que o estado está sincronizado
-      await loadStateFromDb();
-      // Garantir hash após reload
-      if (!state.passwordSet) state.passwordSet = {};
-      state.passwordSet[pid] = newHash;
+      await saveStateToDb();
       state.modal = null;
-      showToast('Senha alterada com sucesso!', 'ok');
+      showToast('Senha alterada! Use a nova senha no próximo login.', 'ok');
       render();
     } catch(e) {
       errEl.textContent = e.message || 'Erro ao alterar senha';
