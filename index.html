@@ -475,7 +475,22 @@ async function loadStateFromDb() {
           if (hasPwd) p.hasPassword = true; // garantir no state.profiles também
         });
       }
-      if (d.passwordSet) state.passwordSet = d.passwordSet;
+      if (d.passwordSet) {
+        state.passwordSet = d.passwordSet;
+        // Sincronizar localStorage com Supabase (merge: local tem prioridade)
+        try {
+          const ls = JSON.parse(localStorage.getItem('exp_pwd')||'{}');
+          const merged_pwd = {...d.passwordSet, ...ls};
+          state.passwordSet = merged_pwd;
+          localStorage.setItem('exp_pwd', JSON.stringify(merged_pwd));
+        } catch(e2) {}
+      } else {
+        // Sem passwordSet no Supabase, usar localStorage
+        try {
+          const ls = JSON.parse(localStorage.getItem('exp_pwd')||'{}');
+          if (Object.keys(ls).length > 0) state.passwordSet = ls;
+        } catch(e2) {}
+      }
       if (d.reunioes)       state.reunioes     = d.reunioes;
       if (d.aulasCustom)    state.aulasCustom  = d.aulasCustom;
     }
@@ -1347,6 +1362,7 @@ function buildSidebar() {
         <button class="sb-out" data-logout title="Sair" style="color:rgba(255,255,255,.4)">${I.logout}</button>
       </div>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
+      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.6);border-color:rgba(255,255,255,.12)" data-open-modal="change-password">🔑 Alterar Senha</button>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
         ${I.logout} Sair
       </button>
@@ -3051,8 +3067,12 @@ function attachEvents() {
       state.loginMode = null;
       state.setupProfile = null;
       state.showSetupPopup = false;
-      // Salva 2x para garantir persistência (sem loadStateFromDb que pode sobrescrever)
-      await saveStateToDb();
+      // Salvar no localStorage como backup imediato
+      try { 
+        const ls = JSON.parse(localStorage.getItem('exp_pwd')||'{}');
+        ls[pid] = hash;
+        localStorage.setItem('exp_pwd', JSON.stringify(ls));
+      } catch(e2) {}
       await saveStateToDb();
       logAccess('login');
       render();
@@ -3073,9 +3093,17 @@ function attachEvents() {
     try {
       const pid = state.setupProfile;
       const hash = await sha256(pass);
-      // Carregar estado mais recente antes de verificar (garante hash atualizado)
-      await loadStateFromDb();
-      const savedHash = (state.passwordSet||{})[pid];
+      // Verificar no localStorage primeiro (mais imediato), depois no state
+      let savedHash = null;
+      try {
+        const ls = JSON.parse(localStorage.getItem('exp_pwd')||'{}');
+        savedHash = ls[pid] || null;
+      } catch(e2) {}
+      // Se não achou no localStorage, carregar do Supabase
+      if (!savedHash) {
+        await loadStateFromDb();
+        savedHash = (state.passwordSet||{})[pid] || null;
+      }
       if (!savedHash || hash !== savedHash) throw new Error('Senha incorreta');
       const p = state.profiles.find(x=>x.id===pid) || { id: pid, name: pid };
       state.user = p;
@@ -3195,11 +3223,15 @@ function attachEvents() {
       const newHash = await sha256(p1);
       if (!state.passwordSet) state.passwordSet = {};
       state.passwordSet[pid] = newHash;
-      // Salvar sem loadStateFromDb para não sobrescrever o novo hash
-      await saveStateToDb();
+      // Salvar no localStorage como backup imediato
+      try {
+        const ls = JSON.parse(localStorage.getItem('exp_pwd')||'{}');
+        ls[pid] = newHash;
+        localStorage.setItem('exp_pwd', JSON.stringify(ls));
+      } catch(e2) {}
       await saveStateToDb();
       state.modal = null;
-      showToast('Senha alterada! Use a nova senha no próximo login.', 'ok');
+      showToast('Senha alterada com sucesso!', 'ok');
       render();
     } catch(e) {
       errEl.textContent = e.message || 'Erro ao alterar senha';
@@ -3385,6 +3417,15 @@ function attachEvents() {
   // ESC fecha o perfil do médico ou o modal
   document.querySelectorAll('[data-manual-tab]').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); state.manualTab = el.dataset.manualTab; render(); });
+  });
+
+  // Botão abrir modal genérico
+  document.querySelectorAll('[data-open-modal]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      state.modal = {type: el.dataset.openModal};
+      render();
+    });
   });
 
   // Central filtros
