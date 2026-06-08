@@ -421,6 +421,12 @@ async function saveStateToDb(retryCount = 0) {
           });
           return merged;
         })(),
+        // passwordSet e profiles SEMPRE vêm do snapshot local (senha é operação crítica)
+        passwordSet: { ...(remoteData.passwordSet||{}), ...(snapshot.passwordSet||{}) },
+        profiles:    snapshot.profiles,
+        expandedAulas: snapshot.expandedAulas || {},
+        aulasCustom: snapshot.aulasCustom || {},
+        reunioes:    snapshot.reunioes,
       };
 
       state._loadedAt = remoteTs;
@@ -3191,6 +3197,11 @@ function attachEvents() {
       if (!state.passwordSet) state.passwordSet = {};
       state.passwordSet[pid] = newHash;
       await saveStateToDb();
+      // Recarregar para garantir que o estado está sincronizado
+      await loadStateFromDb();
+      // Garantir hash após reload
+      if (!state.passwordSet) state.passwordSet = {};
+      state.passwordSet[pid] = newHash;
       state.modal = null;
       showToast('Senha alterada com sucesso!', 'ok');
       render();
