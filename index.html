@@ -5332,7 +5332,7 @@ function buildAdminMedicos() {
         <tbody id="admin-medicos-list">
           ${lista.map(a => {
             const taxaCls = a.taxa_presenca>=75?'pill-green':a.taxa_presenca>=50?'pill-amber':'pill-red';
-            return `<tr data-aluno-row="${a.id}"
+            return `<tr data-aluno-row="${a.id}">
               <td style="font-weight:500;color:var(--t1);cursor:pointer" data-open-aluno="${a.id}" title="Ver perfil">${a.nome}</td>
               <td><span style="color:var(--brand-h)">${a.turma||'—'}</span></td>
               <td style="color:var(--t4)">${a.responsavel||'—'}</td>
