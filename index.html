@@ -666,6 +666,43 @@ function profileHasPassword(pid) {
          !!(state.profiles.find(p=>p.id===pid)||{}).hasPassword;
 }
 
+
+// Salvar senhas diretamente no Supabase sem conflito de timestamp
+async function savePwdDirect() {
+  try {
+    // Buscar estado atual do banco
+    const rows = await dbSelect('mba_exp_presenca_state', 'id=eq.main&select=data');
+    const remote = rows?.[0]?.data || {};
+    // Merge passwordSet local com remoto
+    const mergedPwd = { ...(remote.passwordSet||{}), ...(state.passwordSet||{}) };
+    // Também salvar profiles com hasPassword atualizado
+    const mergedProfiles = (remote.profiles||[]).map(p => {
+      if (mergedPwd[p.id]) return {...p, hasPassword: true};
+      return p;
+    });
+    // Patch apenas esses dois campos
+    const token = sbSession?.access_token || SB_ANON;
+    const patchData = { ...remote, passwordSet: mergedPwd, profiles: mergedProfiles };
+    await fetch(SB_URL + '/rest/v1/mba_exp_presenca_state?id=eq.main', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SB_ANON,
+        'Authorization': 'Bearer ' + (sbSession?.access_token || SB_ANON),
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({ data: patchData }),
+    });
+    // Atualizar localStorage
+    localStorage.setItem('exp_pwd', JSON.stringify(mergedPwd));
+    state.passwordSet = mergedPwd;
+    console.log('[pwd] salvo:', Object.keys(mergedPwd));
+  } catch(e) {
+    console.error('[pwd] erro ao salvar:', e);
+    // Fallback: salvar só no localStorage
+    localStorage.setItem('exp_pwd', JSON.stringify(state.passwordSet||{}));
+  }
+}
 // Permission helpers — no labels ever shown in UI
 const GOD_MODE   = ['ygor','bruna','admin'];
 const MEDICOS_INT= ['matheus','simone','isabella']; // do reunião individual
@@ -1362,7 +1399,6 @@ function buildSidebar() {
         <button class="sb-out" data-logout title="Sair" style="color:rgba(255,255,255,.4)">${I.logout}</button>
       </div>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.15)" data-action="abrir-manual">📖 Manual de Uso</button>
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px;background:rgba(255,255,255,.05);color:rgba(255,255,255,.6);border-color:rgba(255,255,255,.12)" data-open-modal="change-password">🔑 Alterar Senha</button>
       <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:6px 10px" data-switch-profile>
         ${I.logout} Sair
       </button>
@@ -2654,6 +2690,7 @@ function buildModal() {
   if (!m) return '';
   if (m.type === 'switch-profile')  return buildModalSwitchProfile();
   if (m.type === 'change-password') return buildModalChangePwd();
+  if (m.type === 'set-senha-perfil') return buildModalSetSenhaPerfil(m.targetPid);
   if (m.type === 'alocar-turma')           return buildModalAlocarTurma();
   if (m.type === 'alocar-existente-turma') return buildModalAlocarExistente();
   if (m.type === 'importar-planilha')        return buildModalImportarPlanilha();
@@ -3067,13 +3104,7 @@ function attachEvents() {
       state.loginMode = null;
       state.setupProfile = null;
       state.showSetupPopup = false;
-      // Salvar no localStorage como backup imediato
-      try { 
-        const ls = JSON.parse(localStorage.getItem('exp_pwd')||'{}');
-        ls[pid] = hash;
-        localStorage.setItem('exp_pwd', JSON.stringify(ls));
-      } catch(e2) {}
-      await saveStateToDb();
+      await savePwdDirect();
       logAccess('login');
       render();
     } catch(e) {
@@ -3204,6 +3235,35 @@ function attachEvents() {
     });
   });
 
+  // Admin: definir/alterar senha de qualquer perfil
+  document.getElementById('btn-sp-save')?.addEventListener('click', async () => {
+    const pid = document.getElementById('btn-sp-save')?.dataset.targetPid;
+    const p1 = document.getElementById('sp-pwd1')?.value;
+    const p2 = document.getElementById('sp-pwd2')?.value;
+    const errEl = document.getElementById('sp-err');
+    if (!p1 || p1.length < 6) { errEl.textContent='Mínimo 6 caracteres'; errEl.style.display='block'; return; }
+    if (p1 !== p2) { errEl.textContent='As senhas não conferem'; errEl.style.display='block'; return; }
+    errEl.style.display = 'none';
+    try {
+      document.getElementById('btn-sp-save').textContent = 'Salvando...';
+      const hash = await sha256(p1);
+      if (!state.passwordSet) state.passwordSet = {};
+      state.passwordSet[pid] = hash;
+      const p = state.profiles.find(x=>x.id===pid);
+      if (p) p.hasPassword = true;
+      const pp = PROFILES.find(x=>x.id===pid);
+      if (pp) pp.hasPassword = true;
+      await savePwdDirect();
+      state.modal = null;
+      showToast('Senha definida para ' + (p?.name||pid) + '! Já pode fazer login.', 'ok');
+      render();
+    } catch(e) {
+      document.getElementById('sp-err').textContent = e.message;
+      document.getElementById('sp-err').style.display = 'block';
+      document.getElementById('btn-sp-save').textContent = 'Salvar';
+    }
+  });
+
   // Change password modal save
   document.getElementById('btn-cp-save')?.addEventListener('click', async () => {
     const oldPwd = document.getElementById('cp-old')?.value;
@@ -3223,13 +3283,7 @@ function attachEvents() {
       const newHash = await sha256(p1);
       if (!state.passwordSet) state.passwordSet = {};
       state.passwordSet[pid] = newHash;
-      // Salvar no localStorage como backup imediato
-      try {
-        const ls = JSON.parse(localStorage.getItem('exp_pwd')||'{}');
-        ls[pid] = newHash;
-        localStorage.setItem('exp_pwd', JSON.stringify(ls));
-      } catch(e2) {}
-      await saveStateToDb();
+      await savePwdDirect();
       state.modal = null;
       showToast('Senha alterada com sucesso!', 'ok');
       render();
@@ -3420,6 +3474,15 @@ function attachEvents() {
   });
 
   // Botão abrir modal genérico
+  // Definir/alterar senha de um perfil específico (admin)
+  document.querySelectorAll('[data-set-senha-perfil]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      state.modal = {type: 'set-senha-perfil', targetPid: el.dataset.setSenhaPerfil};
+      render();
+    });
+  });
+
   document.querySelectorAll('[data-open-modal]').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation();
@@ -5173,6 +5236,7 @@ function buildAdminPerfis() {
               <td style="text-align:center">
                 <div style="display:flex;gap:4px;justify-content:center">
                   <button class="btn btn-ghost btn-xs" data-edit-profile="${p.id}">${I.edit}</button>
+                  <button class="btn btn-ghost btn-xs" style="font-size:11px;padding:3px 8px" data-set-senha-perfil="${p.id}" title="${profileHasPassword(p.id)?'Alterar senha':'Definir senha'}">${profileHasPassword(p.id)?'🔑 Alterar':'🔑 Definir'}</button>
                   <button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-del-profile="${p.id}">${I.trash}</button>
                 </div>
               </td>
@@ -7441,6 +7505,30 @@ function buildCentralPage() {
         `).join('')}
       </div>
 
+    </div>
+  </div>`;
+}
+
+
+function buildModalSetSenhaPerfil(targetPid) {
+  const p = state.profiles.find(x=>x.id===targetPid) || {id:targetPid, name:targetPid};
+  const jaTemSenha = profileHasPassword(targetPid);
+  return `
+  <div class="overlay" id="modal-overlay">
+    <div class="modal" style="max-width:380px" onclick="event.stopPropagation()">
+      <div class="modal-hdr">
+        <div class="modal-title">${jaTemSenha ? 'Alterar Senha' : 'Definir Senha'} — ${p.name}</div>
+        <button class="btn-icon" data-close-modal>${I.x}</button>
+      </div>
+      <div class="modal-body">
+        <div class="field"><label class="lbl">Nova Senha</label><input class="inp" type="password" id="sp-pwd1" placeholder="Mínimo 6 caracteres" autofocus></div>
+        <div class="field"><label class="lbl">Confirmar Senha</label><input class="inp" type="password" id="sp-pwd2" placeholder="Repita a senha"></div>
+        <div id="sp-err" style="display:none" class="login-err"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+        <button class="btn btn-primary" id="btn-sp-save" data-target-pid="${targetPid}">Salvar</button>
+      </div>
     </div>
   </div>`;
 }
