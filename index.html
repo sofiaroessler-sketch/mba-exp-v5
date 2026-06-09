@@ -370,6 +370,8 @@ async function saveStateToDb(retryCount = 0) {
     reunioes:     state.reunioes,
     expandedAulas: state.expandedAulas || {},
     passwordSet:  state.passwordSet || {},
+    encontros2ciclo: state.encontros2ciclo || {},
+    alertaPlanilhaMesEnviado: state.alertaPlanilhaMesEnviado || '',
   };
 
   try {
@@ -475,6 +477,8 @@ async function loadStateFromDb() {
           if (hasPwd) p.hasPassword = true; // garantir no state.profiles também
         });
       }
+      if (d.encontros2ciclo) state.encontros2ciclo = d.encontros2ciclo;
+      if (d.alertaPlanilhaMesEnviado) state.alertaPlanilhaMesEnviado = d.alertaPlanilhaMesEnviado;
       if (d.passwordSet) {
         state.passwordSet = d.passwordSet;
         // Sincronizar localStorage com Supabase (merge: local tem prioridade)
@@ -776,7 +780,7 @@ const PLANILHA_ETAPA_MAP = {
 const AULAS_DEF = [
   {id:'a1',   bloco:1,    label:'Aula 1 — Discovery e Teste de Funil',                       pre:false, pos:false, preName:'', posName:''},
   {id:'a2',   bloco:1,    label:'Aula 2 — Funil de Vendas',                                  pre:false, pos:true,  preName:'', posName:'Material pós Aula 2'},
-  {id:'sec',  bloco:'11', label:'Treinamento da Secretária',                                 pre:false, pos:false, preName:'', posName:''},
+  {id:'sec',  bloco:'11', label:'Treinamento de Atendimento',                                 pre:false, pos:false, preName:'', posName:''},
   {id:'a3',   bloco:1,    label:'Aula 3 — Produto + Jornada',                                pre:true,  pos:true,  preName:'Material pré Aula 3', posName:'Material pós Aula 3'},
   {id:'a4',   bloco:1,    label:'Aula 4 — Boas Práticas Financeiras',                        pre:false, pos:false, preName:'', posName:''},
   {id:'11_0', bloco:'11', label:'1:1 — 0',                                                   pre:false, pos:false, preName:'', posName:''},
@@ -988,6 +992,8 @@ let state = {
   turmasAntigasSel: null,
   manualTab: 'consultores',
   passwordSet: {},
+  encontros2ciclo: {},
+  alertaPlanilhaMesEnviado: '', // {id: {data, hora, consultores:[], alunos:{[id]:bool}}}
   _undoStack: [], // snapshots de presença para undo
   linkEnviado: {},  // {tid:{aulaId:{alunoId:bool}}} — separate from presença state
   aulaAberta: {},
@@ -1322,11 +1328,7 @@ function buildLoginPage() {
           <button class="profile-btn" data-login="${p.id}">${p.name}</button>
         `).join('')}
       </div>
-      <div style="margin-top:10px">
-        <button class="btn btn-ghost" style="width:100%;justify-content:center;font-size:12.5px" id="btn-admin-bypass">
-          Entrar como Administrador
-        </button>
-      </div>
+
     </div>
   </div>`;
 }
@@ -1358,10 +1360,11 @@ function buildSidebar() {
     {id:'tarefas',   label:'Tarefas',   icon:I.tasks, badge: minhas > 0 ? minhas : 0},
     {id:'medicos',   label:'Médicos',   icon:I.medicos, badge: (isYgor()||isBruna()) && novosMedicos > 0 ? novosMedicos : 0, badgeColor:'amber'},
     {id:'calendario',label:'Calendário',icon:I.calendar},
-    ...(isYgor()  ? [{id:'admin', label:'Admin', icon:I.adminIcon, badge: semSenha > 0 ? semSenha : 0, badgeColor:'amber'}] : []),
+    ...(isYgor()  ? [{id:'admin', label:'Admin', icon:I.adminIcon, badge: (novosMedicos > 0 ? novosMedicos : 0) || (semSenha > 0 ? semSenha : 0), badgeColor:'amber'}] : []),
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
     {id:'minhas-reunioes', label:'Minhas Reuniões', icon:I.cal},
     {id:'kanban', label:'Situação das Turmas', icon:I.kanban},
+    ...(isBruna()||isGod() ? [{id:'encontros2ciclo', label:'Encontros 2º Ciclo', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'}] : []),
     ...(concluidas.length > 0 ? [{id:'turmas-antigas', label:'Turmas Antigas', icon:I.turmas}] : []),
   ];
   return `
@@ -1421,6 +1424,7 @@ function buildMain() {
   if (state.page === 'monitoramento')  return buildMonitoramentoPage();
   if (state.page === 'minhas-reunioes') return buildMinhasReunioesPage();
   if (state.page === 'kanban')  return buildKanbanPage();
+  if (state.page === 'encontros2ciclo') return buildEncontros2CicloPage();
   if (state.page === 'turmas-antigas') return buildTurmasAntigasPage();
   if (state.page === 'manual') return buildManualPage();
   return '<div class="page"><div class="empty-state">Página não encontrada</div></div>';
@@ -1552,6 +1556,7 @@ function buildTurmaDetail() {
         <button class="btn btn-ghost btn-sm" data-action="alocar-existente-turma">${I.userIcon} Adicionar existente</button>
         ${isGod() ? `<button class="btn btn-primary btn-sm" data-action="novo-medico-turma">${I.plus} Novo Médico</button>` : ''}
         ${isBruna() || isGod() ? `<button class="btn btn-ghost btn-sm" data-action="marcar-aula">${I.check} Marcar Aula</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="compartilhar-calendario" data-turma-id="${t.id}">📅 Calendário</button>
         <button class="btn btn-ghost btn-sm" data-action="editar-turma">${I.edit} Editar</button>
       </div>
     </div>
@@ -1614,15 +1619,20 @@ function getMesesPlanilha(aluno) {
 }
 
 // Verifica se o médico tem 2+ meses consecutivos sem ok em qualquer planilha
-// SÓ dispara se já houve pelo menos 1 ok antes (evita flood ao criar a funcionalidade)
+// SÓ dispara se já houve pelo menos 1 ok antes (evita flood)
+// Não verifica planilha própria (link_propria)
 function planilhaEmAlerta(aluno) {
+  if (aluno.link_propria) return false; // tem planilha própria, não alertar
   const ok = aluno.planilhaOk || {};
   const meses = getMesesPlanilha(aluno);
   if (!meses) return false;
   const hoje = new Date();
-  for (const tipo of ['fin','leads']) {
+  // Verificar só os tipos que o médico tem (fin+leads ou nenhum)
+  const tipos = [];
+  if (aluno.link_fin || aluno.link_leads) tipos.push('fin', 'leads');
+  if (tipos.length === 0) return false; // sem planilhas cadastradas
+  for (const tipo of tipos) {
     const arr = ok[tipo] || Array(12).fill(false);
-    // Só considera se já houve pelo menos 1 ok em algum mês
     const tevePeloMenos1Ok = arr.some(v => v === true);
     if (!tevePeloMenos1Ok) continue;
     let consec = 0;
@@ -1639,6 +1649,28 @@ function planilhaEmAlerta(aluno) {
     }
   }
   return false;
+}
+
+// Verificar se hoje é dia 1 e gerar notificação para a Bruna verificar planilhas
+function checkAlertaPlanilhaMensal() {
+  const hoje = new Date();
+  if (hoje.getDate() !== 1) return;
+  const mesKey = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0');
+  if ((state.alertaPlanilhaMesEnviado||'') === mesKey) return;
+  // Criar tarefa para Bruna verificar planilhas
+  const jaExiste = state.tarefas.some(t => !t.done && t.tipo === 'verificar-planilhas-mensal');
+  if (!jaExiste) {
+    addTarefa({
+      titulo: 'Verificar preenchimento das planilhas — ' + mesKey,
+      responsavel: 'bruna',
+      tipo: 'verificar-planilhas-mensal',
+      prio: 'alta',
+      prazo: hoje.toISOString().slice(0,10),
+      descricao: 'Todo dia 1: verificar se os médicos estão preenchendo as planilhas financeira e de leads'
+    });
+    state.alertaPlanilhaMesEnviado = mesKey;
+    scheduleSave();
+  }
 }
 
 function buildCronograma(t, alunos) {
@@ -1765,8 +1797,15 @@ function buildAulaSection(t, alunos, ad) {
               const reu = (a.reunioes||[]).find(r=>r.realizada && r.tipo===ad.label);
               const agendada = (a.reunioes||[]).find(r=>!r.realizada && r.tipo===ad.label);
               const done = !!reu;
+              const isSec = ad.id === 'sec'; // Treinamento de Atendimento
+              // Para Treinamento de Atendimento: clique no nome abre gcal sem convidar médico
+              const secGcalTitle = encodeURIComponent('Treinamento de Atendimento — ' + a.nome.split(' ').slice(0,2).join(' '));
+              const secGcalDesc = encodeURIComponent('Treinamento de Atendimento com a secretária do Dr(a). ' + a.nome);
+              const secGcalUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + secGcalTitle + '&details=' + secGcalDesc;
               return `<tr>
-                <td style="font-weight:500;color:var(--t1);cursor:pointer" data-open-aluno="${a.id}" title="Ver perfil">${a.nome}</td>
+                <td style="font-weight:500;color:var(--t1)">
+                  ${isSec && !done ? `<a href="${secGcalUrl}" target="_blank" style="color:var(--brand-h);text-decoration:none;font-weight:600" title="Agendar Treinamento de Atendimento">${a.nome} 📅</a>` : `<span style="cursor:pointer" data-open-aluno="${a.id}" title="Ver perfil">${a.nome}</span>`}
+                </td>
                 <td style="color:var(--t4);font-size:12px">${a.responsavel||'—'}</td>
                 <td style="text-align:center">
                   <div data-aula11="${ad.id}" data-aluno-id="${a.id}" style="margin:0 auto;width:18px;height:18px;border-radius:4px;border:2px solid ${done?'var(--brand)':'#bbb'};background:${done?'var(--brand)':'transparent'};cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s">
@@ -1774,7 +1813,7 @@ function buildAulaSection(t, alunos, ad) {
                   </div>
                 </td>
                 <td style="font-size:12px;color:var(--t4)">
-                  ${reu ? reu.data : agendada ? `<span class="pill pill-blue" style="font-size:9.5px">Agendado ${agendada.data}</span>` : '—'}
+                  ${reu ? reu.data : agendada ? `<span class="pill pill-blue" style="font-size:9.5px">Agendado ${agendada.data}</span>` : isSec ? '<span style="font-size:11px;color:var(--brand-h)">← clique no nome para agendar</span>' : '—'}
                 </td>
               </tr>`;
             }).join('')}
@@ -2359,6 +2398,7 @@ function buildDetailInfo(a) {
         <div class="field"><label class="lbl">Término previsto</label><input class="inp" type="date" id="ef-fim" value="${ef.fim_previsto||a.fim_previsto||''}"></div>
         <div class="field"><label class="lbl">Link Planilha Financeira</label><input class="inp" id="ef-linkfin" value="${ef.link_fin||a.link_fin||''}"></div>
         <div class="field"><label class="lbl">Link Planilha de Leads</label><input class="inp" id="ef-linkleads" value="${ef.link_leads||a.link_leads||''}"></div>
+        <div class="field"><label class="lbl">Planilha Própria (opcional — substitui fin+leads)</label><input class="inp" id="ef-linkpropria" value="${ef.link_propria||a.link_propria||''}" placeholder="https://..."></div>
         <div class="field"><label class="lbl">Status</label>
           <select class="inp" id="ef-status">
             ${['ativo','pausado','churn','inativo'].map(s=>`<option value="${s}" ${(ef.status||a.status)===s?'selected':''}>${s}</option>`).join('')}
@@ -2521,9 +2561,9 @@ function buildDetailReunioes(a) {
     </div>
     ${(() => {
       // Pendências: tarefas "Marcar X com Y" que ainda não têm reunião agendada/realizada
-      const tipos11 = ['1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Treinamento da Secretária'];
+      const tipos11 = ['1:1 — 0','1:1 — 1','1:1 — 2','1:1 — 3','1:1 — 4','Treinamento de Atendimento'];
       const pendentes = tipos11.filter(tipo => {
-        const temTarefa = state.tarefas.some(t => !t.done && t.alunoId===a.id && t.titulo.includes(tipo.replace('Treinamento da Secretária','Treinamento da Secretária')));
+        const temTarefa = state.tarefas.some(t => !t.done && t.alunoId===a.id && t.titulo.includes(tipo.replace('Treinamento de Atendimento','Treinamento de Atendimento')));
         const temReuniao = (a.reunioes||[]).some(r => r.tipo===tipo);
         return temTarefa && !temReuniao;
       });
@@ -2704,6 +2744,8 @@ function buildModal() {
   if (m.type === 'novo-medico') return buildModalNovoMedico();
   if (m.type === 'nova-tarefa') return buildModalNovaTarefa();
   if (m.type === 'manual') return buildModalManual();
+  if (m.type === 'compartilhar-cal') return buildModalCompartilharCal(m.turmaId);
+  if (m.type === 'novo-encontro2ciclo') return buildModalNovoEncontro();
   if (m.type === 'nova-reuniao') return buildModalNovaReuniao();
   if (m.type === 'marcar-aula') return buildModalMarcarAula();
   if (m.type === 'nova-reuniao-calendario') return buildModalNovaReuniaoCalendario();
@@ -2872,7 +2914,7 @@ const REUNIAO_TIPOS = [
   '1:1 — 2',
   '1:1 — 3',
   '1:1 — 4',
-  'Treinamento da Secretária',
+  'Treinamento de Atendimento',
   'Outro',
 ];
 function buildModalNovaReuniao() {
@@ -3339,6 +3381,18 @@ function attachEvents() {
       if (a === 'nova-reuniao') { state.modal = {type:'nova-reuniao', preTipo:''}; render(); }
       if (a === 'nova-reuniao-calendario') { state.modal = {type:'nova-reuniao-calendario'}; render(); }
       if (a === 'marcar-aula') { state.modal = {type:'marcar-aula'}; render(); }
+      if (a === 'compartilhar-calendario') {
+        const tid2 = el.dataset.turmaId || state.selTurma;
+        const t2 = state.turmas.find(x=>x.id===tid2);
+        const alunos2 = state.alunos.filter(a2=>a2.turma===tid2&&a2.status==='ativo');
+        const emails = alunos2.map(a2=>a2.email||'').filter(Boolean).join(',');
+        const aulas2 = getAulasDaTurma(tid2).filter(ad2=>ad2.bloco!=='11');
+        // Abrir uma janela para cada aula com conteúdo para adicionar ao gcal
+        // Como não podemos criar múltiplos eventos de uma vez, abrir o primeiro
+        // e mostrar modal com todos os links
+        state.modal = {type:'compartilhar-cal', turmaId: tid2};
+        render();
+      }
       if (a === 'editar-aluno') { state.editandoAluno=true; state.editForm={}; state.alunoTab='info'; render(); }
       if (a === 'cancelar-edicao') { state.editandoAluno=false; state.editForm={}; render(); }
       if (a === 'back-turmas') { state.selTurma = null; render(); }
@@ -3490,6 +3544,48 @@ function attachEvents() {
       render();
     });
   });
+
+  // Encontros 2º Ciclo
+  document.querySelectorAll('[data-sel-encontro]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); state.selEncontro2ciclo = el.dataset.selEncontro; render(); });
+  });
+  document.querySelectorAll('[data-enc-presenca]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const encId = el.dataset.encPresenca;
+      const alunoId = el.dataset.alunoId;
+      if (!state.encontros2ciclo[encId]) return;
+      if (!state.encontros2ciclo[encId].alunos) state.encontros2ciclo[encId].alunos = {};
+      state.encontros2ciclo[encId].alunos[alunoId] = !state.encontros2ciclo[encId].alunos[alunoId];
+      scheduleSave(); render();
+    });
+  });
+  document.querySelectorAll('[data-del-encontro]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = el.dataset.delEncontro;
+      delete state.encontros2ciclo[id];
+      state.selEncontro2ciclo = null;
+      scheduleSave(); render();
+    });
+  });
+  document.getElementById('btn-enc-save')?.addEventListener('click', () => {
+    const data = document.getElementById('enc-data')?.value;
+    const hora = document.getElementById('enc-hora')?.value;
+    const consultores = [...document.querySelectorAll('.enc-consultor:checked')].map(el=>el.value);
+    if (!data) { document.getElementById('enc-err').textContent='Data obrigatória'; document.getElementById('enc-err').style.display='block'; return; }
+    const id = 'enc_' + Date.now();
+    if (!state.encontros2ciclo) state.encontros2ciclo = {};
+    state.encontros2ciclo[id] = {data, hora, consultores, alunos: {}};
+    state.modal = null;
+    scheduleSave(); render();
+  });
+  if (state.page === 'encontros2ciclo') {
+    // Action novo encontro
+    document.querySelectorAll('[data-action="novo-encontro2ciclo"]').forEach(el => {
+      el.addEventListener('click', () => { state.modal = {type:'novo-encontro2ciclo'}; render(); });
+    });
+  }
 
   // Central filtros
   document.querySelectorAll('[data-central-filtro]').forEach(el => {
@@ -3707,6 +3803,28 @@ function attachEvents() {
         }
       }
       // Concluiu "Mandar forms de onboarding" → criar tarefa de verificar recebimento
+      // Auto-marcar etapa ao concluir tarefa de reunião de onboarding
+      if (t.done && t.alunoId) {
+        const nomeF = (state.alunos.find(a=>a.id===t.alunoId)?.nome||'').split(' ')[0];
+        if (!state.etapas[t.alunoId]) state.etapas[t.alunoId] = {};
+        const et2 = state.etapas[t.alunoId];
+        if (t.titulo === 'Marcar Reunião de Onboarding com '+nomeF && !et2.onb_done) {
+          et2.onb_done = true;
+          triggerTask('Marcar Reunião Individual com '+nomeF, 'bruna', addDays(now(),5));
+        }
+        if (t.titulo === 'Marcar Reunião Individual com '+nomeF && !et2.ind_done) {
+          et2.ind_done = true;
+          triggerTask('Marcar Reunião Fin/Leads com '+nomeF, 'bruna', addDays(now(),7));
+        }
+        if (t.titulo === ('Verificar recebimento do forms — '+nomeF) && !et2.forms_done) {
+          et2.forms_status = 'recebido';
+          et2.forms_done = true;
+          triggerTask('Marcar Reunião de Onboarding com '+nomeF, 'bruna', addDays(now(),5));
+        }
+        if (t.titulo === ('Mandar forms de onboarding para '+nomeF)) {
+          if (!et2.forms_status) et2.forms_status = 'enviado';
+        }
+      }
       if (t.done && (t.tipo === 'enviar-forms' || t.titulo?.startsWith('Mandar forms de onboarding')) && t.alunoId) {
         const al2 = state.alunos.find(a=>a.id===t.alunoId);
         const nomeFirst2 = al2?.nome?.split(' ')[0]||'';
@@ -3808,8 +3926,8 @@ function attachEvents() {
       const trigBruna=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.responsavel==='bruna'&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:'bruna',prio:'alta'}); };
       if(next==='sim'||next==='sim2'||next==='nao'||next==='link'){
         const ok=(id)=>{const v=(state.presenca[tid][id]||{})[alunoId];return v==='sim'||v==='sim2'||v==='link'||v==='nao';};
-        // Pós Aula 2 → consultor marca Treinamento da Secretária
-        if(['a1','a2'].includes(aulaId)&&ok('a2')) trigT('Marcar Treinamento da Secretária com '+(al?.nome||''));
+        // Pós Aula 2 → consultor marca Treinamento de Atendimento
+        if(['a1','a2'].includes(aulaId)&&ok('a2')) { const ex=state.tarefas.some(t=>!t.done&&t.alunoId===alunoId&&t.titulo===('Marcar Treinamento de Atendimento com '+(al?.nome||''))); if(!ex) addTarefa({titulo:'Marcar Treinamento de Atendimento com '+(al?.nome||''),responsavel:'bruna',alunoId,alunoNome:al?.nome,prio:'alta'}); }
         if(['a1','a2','a3','a4'].includes(aulaId)&&ok('a4')) {
           trigT('Marcar 1:1 — 0 com '+(al?.nome||''));
           // Bruna avisa o grupo da turma sobre a pausa entre aula 4 e 5
@@ -3830,7 +3948,7 @@ function attachEvents() {
         const gate9 = okAfter('a9');
         const gate10_1 = okAfter('a10_1');
         const gate10_2 = okAfter('a10_2');
-        if(!gate2) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar Treinamento da Secretária com '+nomeAl)) t.done=true; });
+        if(!gate2) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar Treinamento de Atendimento com '+nomeAl)) t.done=true; });
         if(!gate4) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 0 com '+nomeAl)) t.done=true; });
         if(!gate9) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 1 com '+nomeAl)) t.done=true; });
         if(!gate10_1) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 3 com '+nomeAl)) t.done=true; });
@@ -3901,7 +4019,7 @@ function attachEvents() {
         const pTidR = state.presenca[tid]||{};
         const okR=(id)=>{const v=(pTidR[id]||{})[alunoId];return v==='sim'||v==='sim2'||v==='link'||v==='nao';};
         const nomeAl2=al?.nome||'';
-        if(!okR('a2')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar Treinamento da Secretária com '+nomeAl2)) t.done=true; });
+        if(!okR('a2')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar Treinamento de Atendimento com '+nomeAl2)) t.done=true; });
         if(!okR('a4')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 0 com '+nomeAl2)) t.done=true; });
         if(!okR('a9')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 1 com '+nomeAl2)) t.done=true; });
         if(!okR('a10_1')) state.tarefas.forEach(t=>{ if(t.alunoId===alunoId&&t.titulo===('Marcar 1:1 — 3 com '+nomeAl2)) t.done=true; });
@@ -3912,9 +4030,9 @@ function attachEvents() {
         const pTid = state.presenca[tid];
         const marked = (id) => { const m = (pTid[id]||{})[alunoId]; return m==='sim'||m==='sim2'||m==='nao'||m==='link'; };
         const trigBruna=(titulo)=>{ const ex=state.tarefas.some(t=>!t.done&&t.responsavel==='bruna'&&t.titulo===titulo); if(!ex) addTarefa({titulo,responsavel:'bruna',prio:'alta'}); };
-        // Pós Aula 2 → consultor marca Treinamento da Secretária
+        // Pós Aula 2 → consultor marca Treinamento de Atendimento
         if (['a1','a2'].includes(aulaId) && marked('a2'))
-          triggerTask('Marcar Treinamento da Secretária com ' + (al?.nome||''));
+          { const ex2=state.tarefas.some(t=>!t.done&&t.alunoId===alunoId&&t.titulo===('Marcar Treinamento de Atendimento com '+(al?.nome||''))); if(!ex2) addTarefa({titulo:'Marcar Treinamento de Atendimento com '+(al?.nome||''),responsavel:'bruna',alunoId,alunoNome:al?.nome,prio:'alta'}); }
         // After Aula 4 → trigger 1:1-0 + alerta Bruna sobre pausa
         if (['a1','a2','a3','a4'].includes(aulaId) && marked('a4')) {
           triggerTask('Marcar 1:1 — 0 com ' + (al?.nome||''));
@@ -3956,11 +4074,11 @@ function attachEvents() {
         et.forms_done   = (next === 'recebido'); // mantém compatibilidade com o resto do código
         scheduleSave();
         if (next === 'recebido') {
-          // médico recebeu/preencheu → próximo passo: marcar Reunião Individual
-          triggerTask('Marcar Reunião Individual com '+nomeFirst, 'bruna', addDays(now(),5));
+          // médico recebeu/preencheu → próximo passo: marcar Reunião de Onboarding
+          triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
         } else {
-          // saiu de recebido → remove tarefa de individual pendente
-          state.tarefas = state.tarefas.filter(t=>!(t.alunoId===alunoId && !t.done && t.titulo==='Marcar Reunião Individual com '+nomeFirst));
+          // saiu de recebido → remove tarefa de onboarding pendente
+          state.tarefas = state.tarefas.filter(t=>!(t.alunoId===alunoId && !t.done && t.titulo==='Marcar Reunião de Onboarding com '+nomeFirst));
         }
         render();
         return;
@@ -3972,12 +4090,12 @@ function attachEvents() {
       et[key] = !wasDone;
       scheduleSave();
       if (!wasDone) {
-        if (etapa==='ind' && et.forms_done) triggerTask('Marcar Reunião de Onboarding com '+nomeFirst, 'bruna', addDays(now(),5));
-        if (etapa==='onb') triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst, 'bruna', addDays(now(),7));
+        if (etapa==='onb' && et.forms_done) triggerTask('Marcar Reunião Individual com '+nomeFirst, 'bruna', addDays(now(),5));
+        if (etapa==='ind') triggerTask('Marcar Reunião Fin/Leads com '+nomeFirst, 'bruna', addDays(now(),7));
       } else {
         const toRemove = {
-          ind: ['Marcar Reunião de Onboarding com '+nomeFirst],
-          onb: ['Marcar Reunião Fin/Leads com '+nomeFirst],
+          onb: ['Marcar Reunião Individual com '+nomeFirst],
+          ind: ['Marcar Reunião Fin/Leads com '+nomeFirst],
           fin: [],
         }[etapa]||[];
         state.tarefas = state.tarefas.filter(t=>!(t.alunoId===alunoId && !t.done && toRemove.includes(t.titulo)));
@@ -4404,7 +4522,7 @@ function salvarMedico() {
     inicio: document.getElementById('m-inicio')?.value||'',
     fim_previsto: document.getElementById('m-fim')?.value||'',
     taxa_presenca: 0, progress: ep, reunioes: [], notas: '', log_cs: '', okrs: [],
-    link_fin: '', link_leads: '',
+    link_fin: '', link_leads: '', link_propria: '',
   };
   state.alunos.push(novo);
   // Trigger task for Bruna — mandar forms de onboarding (cadeia segue após forms recebido)
@@ -4557,6 +4675,7 @@ function salvarEdicaoAluno() {
   a.fim_previsto = g('ef-fim')||'';
   a.link_fin = g('ef-linkfin')||'';
   a.link_leads = g('ef-linkleads')||'';
+  a.link_propria = g('ef-linkpropria')||'';
   a.status = g('ef-status')||'ativo';
   state.editandoAluno = false;
   showToast('Perfil atualizado');
@@ -6647,7 +6766,14 @@ function buildMonitoramentoPage() {
   const emRiscoPresenca  = state.alunos.filter(a => a.status==='ativo' && isRiscoPresenca(a));
   const _turmasConclMonit = new Set(state.turmas.filter(t=>t.concluida).map(t=>t.id));
   const semPlanilha      = state.alunos.filter(a => a.status==='ativo' && !_turmasConclMonit.has(a.turma) && planilhaEmAlerta(a));
-  const semLinkPlanilha  = state.alunos.filter(a => a.status==='ativo' && !_turmasConclMonit.has(a.turma) && (!a.link_fin || !a.link_leads));
+  const semLinkPlanilha  = state.alunos.filter(a => {
+    if (a.status !== 'ativo' || _turmasConclMonit.has(a.turma)) return false;
+    if (a.link_propria) return false;
+    if (!a.link_fin && !a.link_leads) return true;
+    if (a.link_fin && !a.link_leads) return true;
+    if (!a.link_fin && a.link_leads) return true;
+    return false;
+  });
   const todos            = state.alunos.filter(a => a.status==='ativo' && isRisco(a));
 
   // Weekly reminder logic — show banner if today is Monday or first visit this week
@@ -7067,7 +7193,7 @@ function buildManualPage() {
       </div>
 
       <div class="manual-section">
-        <h2 class="manual-h2">3. 1:1s e Treinamento da Secretária</h2>
+        <h2 class="manual-h2">3. 1:1s e Treinamento de Atendimento</h2>
         <p class="manual-p">Quando as condições são atingidas (após aulas-chave), uma tarefa aparece automaticamente em <strong>Tarefas</strong> para você agendar o 1:1 ou treinamento. No cronograma da turma, você verá a tabela de 1:1s — clique no ✓ para marcar como realizado.</p>
         <div class="manual-tip">💡 As tarefas de 1:1 somem automaticamente se a presença for desmarcada.</div>
       </div>
@@ -7233,7 +7359,7 @@ function buildModalManual() {
       ])),
 
       section(h2('3. Quando receber a notificação de 1:1') + p('Após cada marco do programa, você recebe uma tarefa. Os gatilhos são:') + li([
-        'Após a <strong>Aula 2</strong> → Treinamento da Secretária',
+        'Após a <strong>Aula 2</strong> → Treinamento de Atendimento',
         'Após a <strong>Aula 4</strong> → 1:1 — 0',
         'Após a <strong>Aula 9</strong> → 1:1 — 1',
         'Após a <strong>Aula 10</strong> → 1:1 — 2 e 1:1 — 3',
@@ -7532,6 +7658,180 @@ function buildModalSetSenhaPerfil(targetPid) {
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close-modal>Cancelar</button>
         <button class="btn btn-primary" id="btn-sp-save" data-target-pid="${targetPid}">Salvar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+
+function buildModalCompartilharCal(turmaId) {
+  const t = state.turmas.find(x=>x.id===turmaId);
+  if (!t) return '';
+  const alunos = state.alunos.filter(a=>a.turma===turmaId&&a.status==='ativo');
+  const aulas = getAulasDaTurma(turmaId).filter(ad=>ad.bloco!=='11');
+  const dates = (state.aulasDates||{})[turmaId] || {};
+  
+  const links = aulas.map(ad => {
+    const info = dates[ad.id];
+    if (!info?.data) return null;
+    const title = encodeURIComponent(ad.label + ' — Turma ' + t.nome);
+    const desc = encodeURIComponent('Exponencial MBA\nTurma ' + t.nome);
+    const dateStr = info.data.replace(/-/g,'');
+    const horaStart = (info.hora||'08:00').replace(':','');
+    const horaEnd = (info.horaFim||'10:00').replace(':','');
+    const dates_param = dateStr+'T'+horaStart+'00/'+dateStr+'T'+horaEnd+'00';
+    return { label: ad.label, data: info.data, url: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${desc}&dates=${dates_param}` };
+  }).filter(Boolean);
+
+  return `
+  <div class="overlay" id="modal-overlay">
+    <div class="modal" style="max-width:520px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
+      <div class="modal-hdr">
+        <div class="modal-title">📅 Calendário — Turma ${t.nome}</div>
+        <button class="btn-icon" data-close-modal>${I.x}</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--t4);margin-bottom:16px">Clique em cada aula para adicionar ao Google Calendar. As datas precisam estar cadastradas no sistema.</p>
+        ${links.length === 0 ? '<div style="text-align:center;color:var(--t4);padding:20px">Nenhuma aula com data cadastrada ainda</div>' : links.map(l => `
+          <a href="${l.url}" target="_blank" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;text-decoration:none;color:inherit;background:#fff">
+            <span style="font-size:13px;font-weight:500;color:var(--t1)">${l.label}</span>
+            <span style="font-size:12px;color:var(--brand-h);font-weight:600">${l.data} 📅</span>
+          </a>
+        `).join('')}
+        ${alunos.length > 0 ? `<div style="margin-top:14px;padding:10px 12px;background:var(--bg-s);border-radius:var(--r);font-size:12px;color:var(--t4)">💡 Após criar cada evento, adicione os emails dos alunos como convidados manualmente no Google Calendar.</div>` : ''}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal>Fechar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+
+function buildEncontros2CicloPage() {
+  // Médicos que já passaram da aula 9
+  const passouA9 = (alunoId) => {
+    const a = state.alunos.find(x=>x.id===alunoId);
+    if (!a) return false;
+    const pMap = (state.presenca[a.turma]||{});
+    return ['a1','a2','a3','a4','a5','a6','a7','a8','a9'].every(id => {
+      const m = pMap[id]||{};
+      return Object.keys(m).length > 0;
+    });
+  };
+
+  const elegíveis = state.alunos.filter(a =>
+    a.status === 'ativo' &&
+    !state.turmas.find(t=>t.id===a.turma)?.concluida &&
+    passouA9(a.id)
+  );
+
+  const encontros = state.encontros2ciclo || {};
+  const listaEncontros = Object.entries(encontros)
+    .map(([id, e]) => ({id, ...e}))
+    .sort((a,b) => (a.data||'').localeCompare(b.data||''));
+  
+  const selEncontro = state.selEncontro2ciclo || null;
+  const enc = selEncontro ? encontros[selEncontro] : null;
+
+  return `
+  <div class="page">
+    <div class="page-hdr">
+      <div>
+        <div class="page-title">Encontros 2º Ciclo</div>
+        <div class="page-sub">${elegíveis.length} médicos elegíveis · ${listaEncontros.length}/14 encontros realizados</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        ${isBruna()||isGod() ? `<button class="btn btn-primary" data-action="novo-encontro2ciclo">${I.plus} Novo Encontro</button>` : ''}
+      </div>
+    </div>
+    <div class="page-body" style="display:grid;grid-template-columns:260px 1fr;gap:20px;align-items:start">
+
+      <!-- Lista de encontros -->
+      <div>
+        <div class="section-title" style="margin-bottom:10px">Encontros (${listaEncontros.length}/14)</div>
+        <!-- barra de progresso -->
+        <div style="background:#e5e7eb;border-radius:99px;height:8px;margin-bottom:16px;overflow:hidden">
+          <div style="background:var(--brand);height:8px;width:${Math.round(listaEncontros.length/14*100)}%;border-radius:99px;transition:width .3s"></div>
+        </div>
+        ${listaEncontros.length === 0 ? `<div style="color:var(--t4);font-size:13px;text-align:center;padding:20px 0">Nenhum encontro ainda</div>` :
+          listaEncontros.map(e => `
+            <div style="padding:10px 12px;border:1px solid ${selEncontro===e.id?'var(--brand)':'var(--border)'};border-radius:var(--r2);margin-bottom:8px;cursor:pointer;background:${selEncontro===e.id?'#f5f0ff':'#fff'}" data-sel-encontro="${e.id}">
+              <div style="font-size:13px;font-weight:600;color:var(--t1)">Encontro ${listaEncontros.indexOf(e)+1}</div>
+              <div style="font-size:11.5px;color:var(--t4);margin-top:2px">${e.data||'Sem data'} ${e.hora?'· '+e.hora:''}</div>
+              <div style="font-size:11px;color:var(--t4);margin-top:2px">${Object.values(e.alunos||{}).filter(Boolean).length} presentes</div>
+            </div>
+          `).join('')
+        }
+      </div>
+
+      <!-- Detalhe do encontro selecionado -->
+      <div>
+        ${!selEncontro ? `
+          <div style="padding:40px;text-align:center;color:var(--t4);background:#fff;border:1px solid var(--border);border-radius:var(--r2)">
+            Selecione um encontro para ver detalhes e marcar presenças
+          </div>
+        ` : `
+          <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+              <div>
+                <div style="font-family:var(--fh);font-weight:700;font-size:16px;color:var(--brand)">Encontro ${listaEncontros.findIndex(e=>e.id===selEncontro)+1}</div>
+                <div style="font-size:12.5px;color:var(--t4);margin-top:2px">${enc?.data||'Sem data'} ${enc?.hora?'· '+enc.hora:''}</div>
+              </div>
+              ${isBruna()||isGod() ? `<button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-del-encontro="${selEncontro}">${I.trash}</button>` : ''}
+            </div>
+            ${enc?.consultores?.length ? `<div style="font-size:12px;color:var(--t4);margin-bottom:14px">👥 ${enc.consultores.join(', ')}</div>` : ''}
+            <div class="section-title" style="margin-bottom:10px">Presenças (${elegíveis.length} elegíveis)</div>
+            <table class="tbl" style="width:100%">
+              <thead><tr><th>Médico</th><th>Turma</th><th style="text-align:center">Presente</th></tr></thead>
+              <tbody>
+                ${elegíveis.map(a => {
+                  const presente = (enc?.alunos||{})[a.id] === true;
+                  return `<tr>
+                    <td style="font-weight:500">${a.nome}</td>
+                    <td style="color:var(--t4);font-size:12px">${a.turma||'—'}</td>
+                    <td style="text-align:center">
+                      <div data-enc-presenca="${selEncontro}" data-aluno-id="${a.id}" style="margin:0 auto;width:18px;height:18px;border-radius:4px;border:2px solid ${presente?'var(--brand)':'#bbb'};background:${presente?'var(--brand)':'#fff'};cursor:pointer;display:flex;align-items:center;justify-content:center">
+                        ${presente ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="11" height="11" style="display:block;pointer-events:none"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+                      </div>
+                    </td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+    </div>
+  </div>`;
+}
+
+
+function buildModalNovoEncontro() {
+  return `
+  <div class="overlay" id="modal-overlay">
+    <div class="modal" style="max-width:420px" onclick="event.stopPropagation()">
+      <div class="modal-hdr"><div class="modal-title">Novo Encontro 2º Ciclo</div><button class="btn-icon" data-close-modal>${I.x}</button></div>
+      <div class="modal-body">
+        <div class="field-row">
+          <div class="field"><label class="lbl">Data *</label><input class="inp" type="date" id="enc-data"></div>
+          <div class="field"><label class="lbl">Horário</label><input class="inp" type="time" id="enc-hora"></div>
+        </div>
+        <div class="field"><label class="lbl">Consultores presentes</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+            ${['Otávio','Emura','Amyr','Simone','Isabella','Matheus'].map(n=>`
+              <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
+                <input type="checkbox" class="enc-consultor" value="${n}"> ${n}
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        <div id="enc-err" style="display:none" class="login-err"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close-modal>Cancelar</button>
+        <button class="btn btn-primary" id="btn-enc-save">Criar Encontro</button>
       </div>
     </div>
   </div>`;
