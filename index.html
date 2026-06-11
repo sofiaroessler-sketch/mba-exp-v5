@@ -429,6 +429,9 @@ async function saveStateToDb(retryCount = 0) {
         expandedAulas: snapshot.expandedAulas || {},
         aulasCustom: snapshot.aulasCustom || {},
         reunioes:    snapshot.reunioes,
+        tarefas:     snapshot.tarefas, // tarefas SEMPRE do local (inclui exclusões)
+        alunos:      snapshot.alunos,      // alunos SEMPRE do local (inclui exclusões)
+        encontros2ciclo: {...(remoteData.encontros2ciclo||{}), ...(snapshot.encontros2ciclo||{})},
       };
 
       state._loadedAt = remoteTs;
@@ -896,8 +899,17 @@ function getAulasDaTurma(tid) {
   if (!t) return AULAS_DEF.slice();
   const removidas = t.aulasRemovidas || [];
   const extras = t.aulasExtras || [];
+  // Turmas T3+ vão só até a9 (sem a10, a11, etc.)
+  const TURMAS_ATE_A9 = ['T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
+  const somenteAte9 = TURMAS_ATE_A9.includes(t.nome || t.id);
+  // Para T3+: só aulas até a9, treinamento de atendimento (sec) e 1:1-0 (11_0)
+  const AULAS_POS_A9 = ['a10','a10_1','a10_2','a11','a12','11_1','11_2','11_3','11_4'];
   // base global sem as removidas, preservando a ordem
-  let lista = AULAS_DEF.filter(ad => !removidas.includes(ad.id));
+  let lista = AULAS_DEF.filter(ad => {
+    if (removidas.includes(ad.id)) return false;
+    if (somenteAte9 && AULAS_POS_A9.includes(ad.id)) return false;
+    return true;
+  });
   // adiciona as extras da turma (no fim), evitando duplicar ids já presentes
   extras.forEach(ex => {
     if (!ex || !ex.id) return;
@@ -1364,7 +1376,7 @@ function buildSidebar() {
     ...(isBruna() ? [{id:'monitoramento', label:'Monitoramento de Status', icon:I.reportIcon}]   : []),
     {id:'minhas-reunioes', label:'Minhas Reuniões', icon:I.cal},
     {id:'kanban', label:'Situação das Turmas', icon:I.kanban},
-    ...(isBruna()||isGod() ? [{id:'encontros2ciclo', label:'Encontros 2º Ciclo', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'}] : []),
+    {id:'encontros2ciclo', label:'Encontros 2º Ciclo', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'},
     ...(concluidas.length > 0 ? [{id:'turmas-antigas', label:'Turmas Antigas', icon:I.turmas}] : []),
   ];
   return `
@@ -1509,6 +1521,13 @@ function buildTurmaCard(t) {
       <div class="turma-meta-item"><span>Fim previsto</span>${t.fim_previsto ? fmt(t.fim_previsto) : '—'}</div>
       ${!t.concluida ? `
       <div class="turma-meta-item"><span>Próxima aula</span>${proxAula}</div>
+      ${(() => {
+        const encTurma = (state.encontros2ciclo||{})[t.id] || {};
+        const numEnc = Object.keys(encTurma).length;
+        const a9map = (state.presenca[t.id]||{})['a9'] || {};
+        const passouA9turma = Object.keys(a9map).length > 0;
+        return passouA9turma ? `<div class="turma-meta-item"><span>2º Ciclo</span>${numEnc}/14 encontros</div>` : '';
+      })()}
       <div class="turma-meta-item"><span>Risco churn</span><span style="color:var(--amber-t)">${s.risco}</span></div>
       <div class="turma-meta-item"><span>Churn</span><span style="color:var(--red-t)">${s.churn}</span></div>
       ` : `<div class="turma-meta-item"><span>Alunos</span>${s.count + s.churn}</div>`}
@@ -1694,7 +1713,7 @@ function buildCronograma(t, alunos) {
   // Determine if bloco0 is done (todas etapas iniciais para todos os alunos)
   function isBloco0Done() {
     if (!alunos.length) return false;
-    const etapas = ['forms','onb','fin'];
+    const etapas = ['forms','onb','ind','fin'];
     return alunos.every(a => {
       const et = state.etapas[a.id] || {};
       return etapas.every(e => et[e+'_done']);
@@ -1763,6 +1782,43 @@ function buildCronograma(t, alunos) {
     return buildAulaSection(t, alunos, ad);
   }).join('');
 
+  // Card Encontros 2º Ciclo para turmas T3+
+  const TURMAS_ATE_A9_IDS = ['T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
+  const isT3plus = TURMAS_ATE_A9_IDS.includes(t.nome || t.id);
+  const a9marcada = Object.keys((state.presenca[t.id]||{})['a9'] || {}).length > 0;
+  const encDaTurmaC = (state.encontros2ciclo||{})[t.id] || {};
+  const numEncC = Object.keys(encDaTurmaC).length;
+  const cardEncontros2 = isT3plus ? `
+    <div class="prog-stage" style="margin-bottom:10px;border:1px solid rgba(96,0,156,.25);background:#faf5ff">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${a9marcada?'12':'0'}px">
+        <div>
+          <h3 style="font-family:var(--fh);font-weight:700;font-size:14px;color:var(--brand)">Encontros 2º Ciclo</h3>
+          <div style="font-size:12px;color:var(--t4);margin-top:2px">${numEncC}/14 encontros realizados</div>
+        </div>
+        <span class="pill ${a9marcada?'pill-green':'pill-gray'}" style="font-size:10px">${a9marcada?'Ativo':'Aguardando Aula 9'}</span>
+      </div>
+      ${a9marcada ? `
+        <div style="background:#e5e7eb;border-radius:99px;height:6px;margin-bottom:12px;overflow:hidden">
+          <div style="background:var(--brand);height:6px;width:${Math.round(numEncC/14*100)}%;border-radius:99px"></div>
+        </div>
+        ${Object.entries(encDaTurmaC).sort((a,b)=>(a[1].data||'').localeCompare(b[1].data||'')).map(([id,e],i) => {
+          const presentes = Object.values(e.alunos||{}).filter(Boolean).length;
+          const total = alunos.filter(a2=>a2.status==='ativo').length;
+          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:13px;color:var(--t2);font-weight:500">Encontro ${i+1}</span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:12px;color:var(--t4)">${e.data||'Sem data'} ${e.hora?'· '+e.hora:''}</span>
+              <span class="pill pill-blue" style="font-size:10px">${presentes}/${total} presentes</span>
+            </div>
+          </div>`;
+        }).join('')}
+        <div style="margin-top:12px">
+          <button class="btn btn-primary btn-sm" data-action="ir-encontros2ciclo">Ver Encontros 2º Ciclo</button>
+        </div>
+      ` : '<div style="font-size:12.5px;color:var(--t4);margin-top:8px">O 2º Ciclo inicia após a conclusão da Aula 9</div>'}
+    </div>
+  ` : '';
+
   const legenda = `
     <div style="background:var(--bg-t);border:1px solid var(--border);border-radius:var(--r2);padding:12px 16px;margin-bottom:14px">
       <div style="font-size:11px;font-weight:600;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Como funciona a presença</div>
@@ -1773,7 +1829,7 @@ function buildCronograma(t, alunos) {
       </div>
     </div>`;
 
-  return `<div>${legenda}${aulasHtml}</div>`;
+  return `<div>${legenda}${aulasHtml}${cardEncontros2||''}</div>`;
 }
 
 function buildAulaSection(t, alunos, ad) {
@@ -2298,9 +2354,9 @@ function buildDetailEtapas(a) {
   const canEdit = isGod() || isBruna();
   const etapas = [
     {id:'forms', label:'Formulário de Onboarding', desc:'1 clique: enviado · 2 cliques: médico recebeu/preencheu'},
-    {id:'ind',   label:'Reunião Individual',              desc:'Reunião individual com o médico interno'},
-    {id:'onb',   label:'Reunião de Onboarding',           desc:'Reunião inicial realizada com o consultor'},
-    {id:'fin',   label:'Reunião Fin/Leads',               desc:'Acesso às planilhas financeira e de leads'},
+    {id:'onb',   label:'Reunião de Onboarding',    desc:'Reunião inicial realizada com o consultor'},
+    {id:'ind',   label:'Reunião Individual',        desc:'Reunião individual com o médico interno'},
+    {id:'fin',   label:'Reunião Fin/Leads',         desc:'Acesso às planilhas financeira e de leads'},
   ];
   // forms tem 3 estados: '' (nada) / 'enviado' (amarelo) / 'recebido' (verde+done)
   const formsStatus = et.forms_status || (et.forms_done ? 'recebido' : '');
@@ -2441,6 +2497,15 @@ function buildDetailInfo(a) {
 
     <div class="divider"></div>
     <div class="section-title">Planilhas</div>
+    ${a.link_propria ? `
+      <div style="margin-bottom:10px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:var(--r2);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;font-weight:500;color:#166534">✅ Planilha própria</span>
+        <a href="${a.link_propria}" target="_blank" style="color:var(--brand-h);font-size:12.5px">${I.link} Abrir</a>
+      </div>` : `
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        ${a.link_fin ? `<a href="${a.link_fin}" target="_blank" class="btn btn-ghost btn-sm">${I.link} Financeira</a>` : `<span style="font-size:12px;color:var(--red-t)">⚠ Sem link financeira</span>`}
+        ${a.link_leads ? `<a href="${a.link_leads}" target="_blank" class="btn btn-ghost btn-sm">${I.link} Leads</a>` : `<span style="font-size:12px;color:var(--red-t)">⚠ Sem link leads</span>`}
+      </div>`}
     ${(() => {
       const meses = getMesesPlanilha(a);
       const ok = a.planilhaOk || {};
@@ -2583,10 +2648,30 @@ function buildDetailReunioes(a) {
       // Anotações avulsas de reunião (cardzinhos com data + autor)
       if (!Array.isArray(a.reuniaoNotas)) a.reuniaoNotas = [];
       const editId = state.rnotaEditId;
+      // Opções de reunião para associar à anotação
+      const reunioesOpts = [
+        {value:'', label:'— Sem reunião específica —'},
+        ...REUNIAO_TIPOS.map(t => {
+          const r = (a.reunioes||[]).find(x=>x.tipo===t);
+          return {value:t, label:t + (r?.data ? ' · ' + r.data : '')};
+        }),
+        {value:'__outro', label:'Outro / Geral'},
+      ];
       const addForm = state.rnotaAdding ? `
-        <div style="border:1px solid var(--brand-h);border-radius:var(--r2);background:var(--bg-s);padding:13px 16px;margin-bottom:12px">
-          <div class="field" style="margin-bottom:8px"><label class="lbl">Data</label><input class="inp" id="rnota-new-data" placeholder="ex: 28/05/2026" style="padding:6px 10px"></div>
-          <textarea class="note-area" id="rnota-new-texto" placeholder="Anotação da reunião..." style="min-height:80px"></textarea>
+        <div style="border:1px solid var(--brand-h);border-radius:var(--r2);background:#fff;padding:14px 16px;margin-bottom:12px">
+          <div class="field-row" style="margin-bottom:8px">
+            <div class="field">
+              <label class="lbl">Sobre qual reunião?</label>
+              <select class="inp" id="rnota-new-reuniao" style="padding:6px 10px">
+                ${reunioesOpts.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label class="lbl">Data</label>
+              <input class="inp" id="rnota-new-data" value="${new Date().toLocaleDateString('pt-BR')}" style="padding:6px 10px">
+            </div>
+          </div>
+          <textarea class="note-area" id="rnota-new-texto" placeholder="Anotação da reunião..." style="min-height:90px"></textarea>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button class="btn btn-primary btn-sm" data-rnota-save-new data-aluno-id="${a.id}">Salvar</button>
             <button class="btn btn-ghost btn-sm" data-rnota-cancel-new>Cancelar</button>
@@ -2611,7 +2696,8 @@ function buildDetailReunioes(a) {
             <div style="display:flex;align-items:center;gap:8px">
               <div style="width:22px;height:22px;border-radius:50%;background:var(--brand-dim);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:var(--brand-h)">${(n.autorNome||'—').charAt(0)}</div>
               <span style="font-size:12px;font-weight:600;color:var(--t1)">${n.autorNome||'—'}</span>
-              ${n.data?`<span style="font-size:11px;color:var(--t4)">· ${n.data}</span>`:''}
+              ${n.data?`<span style="font-size:11px;color:var(--
+              ${n.reuniaoTipo?`<span class="pill pill-blue" style="font-size:9.5px">${n.reuniaoTipo}</span>`:''}t4)">· ${n.data}</span>`:''}
             </div>
             ${ehDono?`<div style="display:flex;gap:4px"><button class="btn-icon" style="width:22px;height:22px" data-rnota-edit="${n.id}">${I.edit}</button><button class="btn-icon" style="width:22px;height:22px;color:var(--red-t)" data-rnota-del="${n.id}" data-aluno-id="${a.id}">${I.trash}</button></div>`:''}
           </div>
@@ -3397,6 +3483,7 @@ function attachEvents() {
       if (a === 'cancelar-edicao') { state.editandoAluno=false; state.editForm={}; render(); }
       if (a === 'back-turmas') { state.selTurma = null; render(); }
       if (a === 'voltar-turmas-antigas') { state.turmasAntigasSel = null; render(); }
+      if (a === 'ir-encontros2ciclo') { state.page = 'encontros2ciclo'; state.selTurma2ciclo = state.selTurma; render(); }
       if (a === 'abrir-manual') { state.modal = {type:'manual'}; render(); }
       if (a === 'editar-turma') { const t=state.turmas.find(x=>x.id===state.selTurma); state.modal={type:'edit-turma', turma:t}; render(); }
       if (a === 'salvar-turma') salvarTurma();
@@ -3546,6 +3633,11 @@ function attachEvents() {
   });
 
   // Encontros 2º Ciclo
+  // Encontros 2º Ciclo: seletor de turma
+  document.querySelectorAll('[data-sel-turma2ciclo]').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); state.selTurma2ciclo = el.dataset.selTurma2ciclo; state.selEncontro2ciclo = null; render(); });
+  });
+
   document.querySelectorAll('[data-sel-encontro]').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); state.selEncontro2ciclo = el.dataset.selEncontro; render(); });
   });
@@ -3553,10 +3645,13 @@ function attachEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation();
       const encId = el.dataset.encPresenca;
+      const turmaId = el.dataset.turma2;
       const alunoId = el.dataset.alunoId;
-      if (!state.encontros2ciclo[encId]) return;
-      if (!state.encontros2ciclo[encId].alunos) state.encontros2ciclo[encId].alunos = {};
-      state.encontros2ciclo[encId].alunos[alunoId] = !state.encontros2ciclo[encId].alunos[alunoId];
+      if (!state.encontros2ciclo) state.encontros2ciclo = {};
+      if (!state.encontros2ciclo[turmaId]) state.encontros2ciclo[turmaId] = {};
+      if (!state.encontros2ciclo[turmaId][encId]) return;
+      if (!state.encontros2ciclo[turmaId][encId].alunos) state.encontros2ciclo[turmaId][encId].alunos = {};
+      state.encontros2ciclo[turmaId][encId].alunos[alunoId] = !state.encontros2ciclo[turmaId][encId].alunos[alunoId];
       scheduleSave(); render();
     });
   });
@@ -3564,7 +3659,8 @@ function attachEvents() {
     el.addEventListener('click', e => {
       e.stopPropagation();
       const id = el.dataset.delEncontro;
-      delete state.encontros2ciclo[id];
+      const turmaId = state.selTurma2ciclo;
+      if (turmaId && state.encontros2ciclo?.[turmaId]) delete state.encontros2ciclo[turmaId][id];
       state.selEncontro2ciclo = null;
       scheduleSave(); render();
     });
@@ -3574,9 +3670,12 @@ function attachEvents() {
     const hora = document.getElementById('enc-hora')?.value;
     const consultores = [...document.querySelectorAll('.enc-consultor:checked')].map(el=>el.value);
     if (!data) { document.getElementById('enc-err').textContent='Data obrigatória'; document.getElementById('enc-err').style.display='block'; return; }
+    const turmaId = state.selTurma2ciclo;
+    if (!turmaId) return;
     const id = 'enc_' + Date.now();
     if (!state.encontros2ciclo) state.encontros2ciclo = {};
-    state.encontros2ciclo[id] = {data, hora, consultores, alunos: {}};
+    if (!state.encontros2ciclo[turmaId]) state.encontros2ciclo[turmaId] = {};
+    state.encontros2ciclo[turmaId][id] = {data, hora, consultores, alunos: {}};
     state.modal = null;
     scheduleSave(); render();
   });
@@ -4800,10 +4899,12 @@ function rnotaAddSave() {
   const texto = document.getElementById('rnota-new-texto')?.value.trim();
   const data  = document.getElementById('rnota-new-data')?.value.trim() || '';
   if (!texto) return showToast('Escreva a anotação', 'err');
+  const reuniaoRef = document.getElementById('rnota-new-reuniao')?.value || '';
   a.reuniaoNotas.push({
     id:'rn_'+Date.now()+Math.random().toString(36).slice(2,5),
     autorId: state.user?.id || '', autorNome: state.user?.name || '—',
-    data, texto
+    data, texto,
+    reuniaoTipo: reuniaoRef || null,
   });
   state.rnotaAdding = false;
   showToast('Anotação adicionada'); scheduleSave(); render();
@@ -7411,8 +7512,8 @@ function buildModalManual() {
         '2. Clique no nome do médico na tarefa → abre direto na aba Etapas Iniciais',
         '3. Envie o formulário e dê ok na tarefa → o perfil do médico é marcado automaticamente',
         '4. O sistema gera nova tarefa: <strong>Verificar recebimento do forms</strong> (prazo: 7 dias)',
-        '5. Confirmado o recebimento → nova tarefa: <strong>Reunião Individual</strong>',
-        '6. Realizada → nova tarefa: <strong>Reunião de Onboarding</strong>',
+        '5. Confirmado o recebimento → nova tarefa: <strong>Reunião de Onboarding</strong>',
+        '6. Realizada → nova tarefa: <strong>Reunião Individual</strong>',
         '7. Realizada → nova tarefa: <strong>Reunião Fin/Leads</strong>',
       ]) + tip('Em cada reunião, abra o perfil do médico, vá em Reuniões, clique em Realizar e anote o que foi discutido e próximos passos.')),
 
@@ -7709,104 +7810,122 @@ function buildModalCompartilharCal(turmaId) {
 
 
 function buildEncontros2CicloPage() {
-  // Médicos que já passaram da aula 9
+  // Passou da aula 9 = a aula 9 foi realizada na turma do médico
   const passouA9 = (alunoId) => {
     const a = state.alunos.find(x=>x.id===alunoId);
     if (!a) return false;
-    const pMap = (state.presenca[a.turma]||{});
-    return ['a1','a2','a3','a4','a5','a6','a7','a8','a9'].every(id => {
-      const m = pMap[id]||{};
-      return Object.keys(m).length > 0;
-    });
+    // Aula 9 ocorreu na turma se houver qualquer marcação de presença nela
+    const a9map = (state.presenca[a.turma]||{})['a9'] || {};
+    return Object.keys(a9map).length > 0;
   };
 
-  const elegíveis = state.alunos.filter(a =>
-    a.status === 'ativo' &&
-    !state.turmas.find(t=>t.id===a.turma)?.concluida &&
-    passouA9(a.id)
+  // Turmas com pelo menos 1 médico que passou da a9
+  const turmasAtivas = state.turmas.filter(t => !t.concluida);
+  const turmasComCiclo2 = turmasAtivas.filter(t =>
+    state.alunos.some(a => a.turma === t.id && a.status === 'ativo' && passouA9(a.id))
   );
 
-  const encontros = state.encontros2ciclo || {};
-  const listaEncontros = Object.entries(encontros)
+  const selTurma2 = state.selTurma2ciclo || (turmasComCiclo2[0]?.id || null);
+  const elegíveis = selTurma2
+    ? state.alunos.filter(a => a.turma === selTurma2 && a.status === 'ativo' && passouA9(a.id))
+    : [];
+
+  // Encontros desta turma
+  const todasTurmasEnc = state.encontros2ciclo || {};
+  const encDaTurma = selTurma2 ? (todasTurmasEnc[selTurma2] || {}) : {};
+  const listaEncontros = Object.entries(encDaTurma)
     .map(([id, e]) => ({id, ...e}))
     .sort((a,b) => (a.data||'').localeCompare(b.data||''));
-  
+
   const selEncontro = state.selEncontro2ciclo || null;
-  const enc = selEncontro ? encontros[selEncontro] : null;
+  const enc = selEncontro ? encDaTurma[selEncontro] : null;
+  const totalElegiveis = state.alunos.filter(a =>
+    a.status==='ativo' && !state.turmas.find(t=>t.id===a.turma)?.concluida && passouA9(a.id)
+  ).length;
 
   return `
   <div class="page">
     <div class="page-hdr">
       <div>
         <div class="page-title">Encontros 2º Ciclo</div>
-        <div class="page-sub">${elegíveis.length} médicos elegíveis · ${listaEncontros.length}/14 encontros realizados</div>
+        <div class="page-sub">${totalElegiveis} médicos elegíveis no total</div>
       </div>
-      <div style="display:flex;gap:8px">
-        ${isBruna()||isGod() ? `<button class="btn btn-primary" data-action="novo-encontro2ciclo">${I.plus} Novo Encontro</button>` : ''}
+      <div style="display:flex;gap:8px;align-items:center">
+        ${selTurma2 ? `${isBruna()||isGod() ? `<button class="btn btn-primary" data-action="novo-encontro2ciclo">+ Novo Encontro</button>` : ''}` : ''}
       </div>
     </div>
-    <div class="page-body" style="display:grid;grid-template-columns:260px 1fr;gap:20px;align-items:start">
-
-      <!-- Lista de encontros -->
-      <div>
-        <div class="section-title" style="margin-bottom:10px">Encontros (${listaEncontros.length}/14)</div>
-        <!-- barra de progresso -->
-        <div style="background:#e5e7eb;border-radius:99px;height:8px;margin-bottom:16px;overflow:hidden">
-          <div style="background:var(--brand);height:8px;width:${Math.round(listaEncontros.length/14*100)}%;border-radius:99px;transition:width .3s"></div>
-        </div>
-        ${listaEncontros.length === 0 ? `<div style="color:var(--t4);font-size:13px;text-align:center;padding:20px 0">Nenhum encontro ainda</div>` :
-          listaEncontros.map(e => `
-            <div style="padding:10px 12px;border:1px solid ${selEncontro===e.id?'var(--brand)':'var(--border)'};border-radius:var(--r2);margin-bottom:8px;cursor:pointer;background:${selEncontro===e.id?'#f5f0ff':'#fff'}" data-sel-encontro="${e.id}">
-              <div style="font-size:13px;font-weight:600;color:var(--t1)">Encontro ${listaEncontros.indexOf(e)+1}</div>
-              <div style="font-size:11.5px;color:var(--t4);margin-top:2px">${e.data||'Sem data'} ${e.hora?'· '+e.hora:''}</div>
-              <div style="font-size:11px;color:var(--t4);margin-top:2px">${Object.values(e.alunos||{}).filter(Boolean).length} presentes</div>
-            </div>
-          `).join('')
-        }
+    <div class="page-body">
+      <!-- Seletor de turma -->
+      <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+        ${turmasComCiclo2.map(t => `
+          <button class="btn ${selTurma2===t.id?'btn-primary':'btn-ghost'} btn-sm" data-sel-turma2ciclo="${t.id}">
+            Turma ${t.nome}
+            <span style="font-size:10px;margin-left:4px;opacity:.7">${Object.keys(todasTurmasEnc[t.id]||{}).length}/14</span>
+          </button>
+        `).join('')}
+        ${turmasComCiclo2.length===0?'<div style="color:var(--t4);font-size:13px">Nenhuma turma atingiu a Aula 9 ainda</div>':''}
       </div>
 
-      <!-- Detalhe do encontro selecionado -->
-      <div>
-        ${!selEncontro ? `
-          <div style="padding:40px;text-align:center;color:var(--t4);background:#fff;border:1px solid var(--border);border-radius:var(--r2)">
-            Selecione um encontro para ver detalhes e marcar presenças
+      ${selTurma2 ? `
+      <div style="display:grid;grid-template-columns:260px 1fr;gap:20px;align-items:start">
+        <!-- Lista de encontros da turma -->
+        <div>
+          <div class="section-title" style="margin-bottom:10px">Encontros — Turma ${turmasComCiclo2.find(t=>t.id===selTurma2)?.nome||''} (${listaEncontros.length}/14)</div>
+          <div style="background:#e5e7eb;border-radius:99px;height:6px;margin-bottom:14px;overflow:hidden">
+            <div style="background:var(--brand);height:6px;width:${Math.round(listaEncontros.length/14*100)}%;border-radius:99px"></div>
           </div>
-        ` : `
-          <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:20px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-              <div>
-                <div style="font-family:var(--fh);font-weight:700;font-size:16px;color:var(--brand)">Encontro ${listaEncontros.findIndex(e=>e.id===selEncontro)+1}</div>
-                <div style="font-size:12.5px;color:var(--t4);margin-top:2px">${enc?.data||'Sem data'} ${enc?.hora?'· '+enc.hora:''}</div>
+          ${listaEncontros.length === 0 ? '<div style="color:var(--t4);font-size:13px;text-align:center;padding:20px 0">Nenhum encontro ainda</div>' :
+            listaEncontros.map(e => `
+              <div style="padding:10px 12px;border:1px solid ${selEncontro===e.id?'var(--brand)':'var(--border)'};border-radius:var(--r2);margin-bottom:8px;cursor:pointer;background:${selEncontro===e.id?'#f5f0ff':'#fff'}" data-sel-encontro="${e.id}">
+                <div style="font-size:13px;font-weight:600;color:var(--t1)">Encontro ${listaEncontros.indexOf(e)+1}</div>
+                <div style="font-size:11.5px;color:var(--t4);margin-top:2px">${e.data||'Sem data'} ${e.hora?'· '+e.hora:''}</div>
+                <div style="font-size:11px;color:var(--t4);margin-top:2px">${Object.values(e.alunos||{}).filter(Boolean).length}/${elegíveis.length} presentes</div>
               </div>
-              ${isBruna()||isGod() ? `<button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-del-encontro="${selEncontro}">${I.trash}</button>` : ''}
-            </div>
-            ${enc?.consultores?.length ? `<div style="font-size:12px;color:var(--t4);margin-bottom:14px">👥 ${enc.consultores.join(', ')}</div>` : ''}
-            <div class="section-title" style="margin-bottom:10px">Presenças (${elegíveis.length} elegíveis)</div>
-            <table class="tbl" style="width:100%">
-              <thead><tr><th>Médico</th><th>Turma</th><th style="text-align:center">Presente</th></tr></thead>
-              <tbody>
-                ${elegíveis.map(a => {
-                  const presente = (enc?.alunos||{})[a.id] === true;
-                  return `<tr>
-                    <td style="font-weight:500">${a.nome}</td>
-                    <td style="color:var(--t4);font-size:12px">${a.turma||'—'}</td>
-                    <td style="text-align:center">
-                      <div data-enc-presenca="${selEncontro}" data-aluno-id="${a.id}" style="margin:0 auto;width:18px;height:18px;border-radius:4px;border:2px solid ${presente?'var(--brand)':'#bbb'};background:${presente?'var(--brand)':'#fff'};cursor:pointer;display:flex;align-items:center;justify-content:center">
-                        ${presente ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="11" height="11" style="display:block;pointer-events:none"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
-                      </div>
-                    </td>
-                  </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
-          </div>
-        `}
-      </div>
+            `).join('')
+          }
+        </div>
 
+        <!-- Detalhe -->
+        <div>
+          ${!selEncontro ? `
+            <div style="padding:40px;text-align:center;color:var(--t4);background:#fff;border:1px solid var(--border);border-radius:var(--r2)">
+              Selecione um encontro para ver detalhes e marcar presenças
+            </div>
+          ` : `
+            <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:20px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <div>
+                  <div style="font-family:var(--fh);font-weight:700;font-size:16px;color:var(--brand)">Encontro ${listaEncontros.findIndex(e=>e.id===selEncontro)+1} — Turma ${turmasComCiclo2.find(t=>t.id===selTurma2)?.nome||''}</div>
+                  <div style="font-size:12.5px;color:var(--t4);margin-top:2px">${enc?.data||'Sem data'} ${enc?.hora?'· '+enc.hora:''}</div>
+                </div>
+                ${isBruna()||isGod() ? `<button class="btn btn-xs" style="background:var(--red-bg);color:var(--red-t);border:1px solid var(--red-b)" data-del-encontro="${selEncontro}">${I.trash}</button>` : ''}
+              </div>
+              ${enc?.consultores?.length ? `<div style="font-size:12px;color:var(--t4);margin-bottom:14px">👥 ${enc.consultores.join(', ')}</div>` : ''}
+              <div class="section-title" style="margin-bottom:10px">Presenças</div>
+              <table class="tbl" style="width:100%">
+                <thead><tr><th>Médico</th><th style="text-align:center">Presente</th></tr></thead>
+                <tbody>
+                  ${elegíveis.map(a => {
+                    const presente = (enc?.alunos||{})[a.id] === true;
+                    return `<tr>
+                      <td style="font-weight:500;cursor:pointer" data-open-aluno="${a.id}">${a.nome}</td>
+                      <td style="text-align:center">
+                        <div data-enc-presenca="${selEncontro}" data-turma2="${selTurma2}" data-aluno-id="${a.id}" style="margin:0 auto;width:18px;height:18px;border-radius:4px;border:2px solid ${presente?'var(--brand)':'#bbb'};background:${presente?'var(--brand)':'#fff'};cursor:pointer;display:flex;align-items:center;justify-content:center">
+                          ${presente ? '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" width="11" height="11" style="display:block;pointer-events:none"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+                        </div>
+                      </td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+      </div>
+      ` : ''}
     </div>
   </div>`;
 }
-
 
 function buildModalNovoEncontro() {
   return `
