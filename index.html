@@ -3670,8 +3670,13 @@ function attachEvents() {
     const hora = document.getElementById('enc-hora')?.value;
     const consultores = [...document.querySelectorAll('.enc-consultor:checked')].map(el=>el.value);
     if (!data) { document.getElementById('enc-err').textContent='Data obrigatória'; document.getElementById('enc-err').style.display='block'; return; }
-    const turmaId = state.selTurma2ciclo;
-    if (!turmaId) return;
+    // Se não tem turma selecionada, pegar a primeira com médicos elegíveis
+    let turmaId = state.selTurma2ciclo;
+    if (!turmaId) {
+      const t1 = state.turmas.find(t2 => !t2.concluida && Object.keys((state.presenca[t2.id]||{})['a9']||{}).length > 0);
+      if (t1) { turmaId = t1.id; state.selTurma2ciclo = t1.id; }
+    }
+    if (!turmaId) { showToast('Nenhuma turma no 2º Ciclo ainda', 'err'); return; }
     const id = 'enc_' + Date.now();
     if (!state.encontros2ciclo) state.encontros2ciclo = {};
     if (!state.encontros2ciclo[turmaId]) state.encontros2ciclo[turmaId] = {};
@@ -7851,7 +7856,7 @@ function buildEncontros2CicloPage() {
         <div class="page-sub">${totalElegiveis} médicos elegíveis no total</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        ${selTurma2 ? `${isBruna()||isGod() ? `<button class="btn btn-primary" data-action="novo-encontro2ciclo">+ Novo Encontro</button>` : ''}` : ''}
+        ${isBruna()||isGod() ? `<button class="btn btn-primary" data-action="novo-encontro2ciclo">${I.plus} Novo Encontro</button>` : ''}
       </div>
     </div>
     <div class="page-body">
