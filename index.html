@@ -430,7 +430,23 @@ async function saveStateToDb(retryCount = 0) {
         aulasCustom: snapshot.aulasCustom || {},
         reunioes:    snapshot.reunioes,
         tarefas:     snapshot.tarefas, // tarefas SEMPRE do local (inclui exclusões)
-        alunos:      snapshot.alunos,      // alunos SEMPRE do local (inclui exclusões)
+        // Alunos: local tem prioridade, mas preserva calendarEventId do remoto
+        alunos: (() => {
+          const remoteAlunos = remoteData.alunos || [];
+          return (snapshot.alunos || []).map(a => {
+            const remoteA = remoteAlunos.find(r => r.id === a.id);
+            if (!remoteA) return a;
+            // Preservar calendarEventId nas reuniões (salvo pelo n8n)
+            const reunioes = (a.reunioes || []).map(r => {
+              const remoteR = (remoteA.reunioes || []).find(rr => rr.id === r.id);
+              if (remoteR?.calendarEventId && !r.calendarEventId) {
+                return {...r, calendarEventId: remoteR.calendarEventId};
+              }
+              return r;
+            });
+            return {...a, reunioes};
+          });
+        })(),
         encontros2ciclo: {...(remoteData.encontros2ciclo||{}), ...(snapshot.encontros2ciclo||{})},
       };
 
@@ -591,10 +607,7 @@ function gcalSetToken(uid, access_token, expires_in) {
 // Cria um evento no Google Calendar do usuário
 async function gcalCreateEvent(uid, event) {
   let token = gcalGetToken(uid);
-  if (!token) {
-    showToast('Conecte o Google Calendar primeiro', 'err');
-    return null;
-  }
+  if (!token) return null;
   try {
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
       method: 'POST',
