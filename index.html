@@ -829,6 +829,11 @@ const AULAS_DEF = [
   {id:'a7',   bloco:2,    label:'Aula 7 — Cultura e Dinâmicas de Liderança',                 pre:false, pos:true,  preName:'', posName:'Material pós Aula 7'},
   {id:'a8',   bloco:2,    label:'Aula 8 — Growth e Modelos de Negócio',                      pre:false, pos:false, preName:'', posName:''},
   {id:'a9',   bloco:2,    label:'Aula 9 — Planejamento',                                     pre:false, pos:false, preName:'', posName:''},
+  {id:'11_1', bloco:'11', label:'1:1 — 1',                                                   pre:false, pos:false, preName:'', posName:''},
+  {id:'11_2', bloco:'11', label:'1:1 — 2',                                                   pre:false, pos:false, preName:'', posName:''},
+  {id:'11_3', bloco:'11', label:'1:1 — 3',                                                   pre:false, pos:false, preName:'', posName:''},
+  {id:'11_4', bloco:'11', label:'1:1 — 4',                                                   pre:false, pos:false, preName:'', posName:''},
+  {id:'11_5', bloco:'11', label:'1:1 — 5',                                                   pre:false, pos:false, preName:'', posName:''},
   {id:'enc2c',bloco:3,    label:'Encontros 2º Ciclo',                                        pre:false, pos:false, preName:'', posName:''},
 ];
 
@@ -932,8 +937,9 @@ function getAulasDaTurma(tid) {
   // Turmas T3+ vão só até a9 (sem a10, a11, etc.)
   const TURMAS_ATE_A9 = ['T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
   const somenteAte9 = TURMAS_ATE_A9.includes(t.nome || t.id);
-  // Para T3+: só aulas até a9, treinamento de atendimento (sec) e 1:1-0 (11_0)
-  const AULAS_POS_A9 = ['a10','a10_1','a10_2','a11','a12','11_1','11_2','11_3','11_4'];
+  // Para T3+: removidas apenas as aulas antigas pós-a9 (a10, a11, a12).
+  // Os 1:1 — 1 a 5 fazem parte do cronograma padrão e DEVEM aparecer em todas as turmas.
+  const AULAS_POS_A9 = ['a10','a10_1','a10_2','a11','a12'];
   // base global sem as removidas, preservando a ordem
   let lista = AULAS_DEF.filter(ad => {
     if (removidas.includes(ad.id)) return false;
@@ -4602,6 +4608,30 @@ function attachEvents() {
         // não existe → criar e marcar
         al.reunioes.push({id:'r_'+Date.now(), tipo:aulaLabel, data:new Date().toISOString().slice(0,10), realizada:true, notas:'', proxPassos:''});
       }
+
+      // Cascata de 1:1: ao CONCLUIR um 1:1, gera alerta para o consultor marcar o próximo.
+      const acabouDeRealizar = al.reunioes.some(r=>r.tipo===aulaLabel && r.realizada);
+      const SEQ_1A1 = ['11_0','11_1','11_2','11_3','11_4','11_5'];
+      const posSeq = SEQ_1A1.indexOf(aulaId);
+      if (acabouDeRealizar && posSeq >= 0 && posSeq < SEQ_1A1.length-1) {
+        const proxId = SEQ_1A1[posSeq+1];
+        // 11_1 só começa depois da Aula 9 estar realizada na turma
+        const a9ok = posSeq+1 < 1 ? true : (proxId==='11_1'
+          ? Object.keys((state.presenca[tid]||{})['a9']||{}).length > 0
+          : true);
+        const proxLabel = getAulasDaTurma(tid).find(a=>a.id===proxId)?.label
+          || AULAS_DEF.find(a=>a.id===proxId)?.label || proxId;
+        // consultor responsável: do médico, senão da turma
+        const respNome = al.responsavel || (state.turmas.find(t=>t.id===tid)?.responsavel) || '';
+        const respId = PROFILES.find(p=>p.name===respNome)?.id || 'bruna';
+        const tituloProx = `Marcar ${proxLabel} com ${al.nome}`;
+        const jaProx = state.tarefas.some(t=>!t.done && t.alunoId===alunoId && t.titulo===tituloProx);
+        const jaFeito = al.reunioes.some(r=>r.tipo===proxLabel && r.realizada);
+        if (a9ok && !jaProx && !jaFeito) {
+          addTarefa({titulo:tituloProx, responsavel:respId, alunoId, alunoNome:al.nome, prio:'alta'});
+        }
+      }
+
       scheduleSave();
       render();
     });
@@ -8201,50 +8231,50 @@ function buildCentralPage() {
         `).join('')}
       </div>
 
-    </div>
+      <!-- MEUS MÉDICOS EM ALERTA (ocupa as duas colunas, abaixo do grid) -->
+      ${(meusSemPlanilha.length || meusFlagados.length || meusMuitasFaltas.length) ? `
+      <div style="grid-column:1 / -1;margin-top:8px">
+        <div class="section-title" style="margin:8px 0 12px">${isGod()||isBruna()?'Médicos em alerta':'Meus médicos em alerta'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start">
 
-    <!-- MEUS MÉDICOS EM ALERTA (largura total) -->
-    ${(meusSemPlanilha.length || meusFlagados.length || meusMuitasFaltas.length) ? `
-    <div style="padding:0 26px 26px">
-      <div class="section-title" style="margin:8px 0 12px">${isGod()||isBruna()?'Médicos em alerta':'Meus médicos em alerta'}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start">
+          <!-- Sem planilha -->
+          <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px;max-height:340px;overflow-y:auto">
+            <div style="font-size:11.5px;font-weight:700;color:var(--red-t);letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px;position:sticky;top:0;background:#fff">📋 Sem planilha (${meusSemPlanilha.length})</div>
+            ${meusSemPlanilha.length===0 ? '<div style="font-size:12.5px;color:var(--t4)">Nenhum 🎉</div>' :
+              meusSemPlanilha.map(a=>`
+                <div style="padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" data-open-aluno="${a.id}" data-open-tab="info">
+                  <div style="font-size:13px;font-weight:500;color:var(--t1)">${a.nome}</div>
+                  <div style="font-size:11px;color:var(--t4)">${a.turma||'—'} · ${[a.planilha_fin_ok===false||!a.link_fin?'Fin':null, a.planilha_leads_ok===false||!a.link_leads?'Leads':null].filter(Boolean).join(' + ')||'pendente'}</div>
+                </div>`).join('')}
+          </div>
 
-        <!-- Sem planilha -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px">
-          <div style="font-size:11.5px;font-weight:700;color:var(--red-t);letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px">📋 Sem planilha (${meusSemPlanilha.length})</div>
-          ${meusSemPlanilha.length===0 ? '<div style="font-size:12.5px;color:var(--t4)">Nenhum 🎉</div>' :
-            meusSemPlanilha.map(a=>`
-              <div style="padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" data-open-aluno="${a.id}" data-open-tab="info">
-                <div style="font-size:13px;font-weight:500;color:var(--t1)">${a.nome}</div>
-                <div style="font-size:11px;color:var(--t4)">${a.turma||'—'} · ${[a.planilha_fin_ok===false||!a.link_fin?'Fin':null, a.planilha_leads_ok===false||!a.link_leads?'Leads':null].filter(Boolean).join(' + ')||'pendente'}</div>
-              </div>`).join('')}
+          <!-- Flagados -->
+          <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px;max-height:340px;overflow-y:auto">
+            <div style="font-size:11.5px;font-weight:700;color:var(--red-t);letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px;position:sticky;top:0;background:#fff">⚑ Marcados (${meusFlagados.length})</div>
+            ${meusFlagados.length===0 ? '<div style="font-size:12.5px;color:var(--t4)">Nenhum</div>' :
+              meusFlagados.map(a=>`
+                <div style="padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" data-open-aluno="${a.id}" data-open-tab="notas">
+                  <div style="font-size:13px;font-weight:500;color:var(--t1)">${a.nome}</div>
+                  <div style="font-size:11px;color:var(--red-t);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(a.flag.motivo||'').replace(/</g,'&lt;')||'marcado'}</div>
+                </div>`).join('')}
+          </div>
+
+          <!-- Muitas faltas -->
+          <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px;max-height:340px;overflow-y:auto">
+            <div style="font-size:11.5px;font-weight:700;color:var(--amber-t);letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px;position:sticky;top:0;background:#fff">🚪 ${maxFaltasC}+ faltas (${meusMuitasFaltas.length})</div>
+            ${meusMuitasFaltas.length===0 ? '<div style="font-size:12.5px;color:var(--t4)">Nenhum 🎉</div>' :
+              meusMuitasFaltas.map(({a,faltas})=>`
+                <div style="padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" data-open-aluno="${a.id}" data-open-tab="aulas">
+                  <div style="font-size:13px;font-weight:500;color:var(--t1)">${a.nome}</div>
+                  <div style="font-size:11px;color:var(--t4)">${a.turma||'—'} · ${faltas} falta${faltas!==1?'s':''}</div>
+                </div>`).join('')}
+          </div>
+
         </div>
-
-        <!-- Flagados -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px">
-          <div style="font-size:11.5px;font-weight:700;color:var(--red-t);letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px">⚑ Marcados (${meusFlagados.length})</div>
-          ${meusFlagados.length===0 ? '<div style="font-size:12.5px;color:var(--t4)">Nenhum</div>' :
-            meusFlagados.map(a=>`
-              <div style="padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" data-open-aluno="${a.id}" data-open-tab="notas">
-                <div style="font-size:13px;font-weight:500;color:var(--t1)">${a.nome}</div>
-                <div style="font-size:11px;color:var(--red-t);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(a.flag.motivo||'').replace(/</g,'&lt;')||'marcado'}</div>
-              </div>`).join('')}
-        </div>
-
-        <!-- Muitas faltas -->
-        <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px">
-          <div style="font-size:11.5px;font-weight:700;color:var(--amber-t);letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px">🚪 ${maxFaltasC}+ faltas (${meusMuitasFaltas.length})</div>
-          ${meusMuitasFaltas.length===0 ? '<div style="font-size:12.5px;color:var(--t4)">Nenhum 🎉</div>' :
-            meusMuitasFaltas.map(({a,faltas})=>`
-              <div style="padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" data-open-aluno="${a.id}" data-open-tab="aulas">
-                <div style="font-size:13px;font-weight:500;color:var(--t1)">${a.nome}</div>
-                <div style="font-size:11px;color:var(--t4)">${a.turma||'—'} · ${faltas} falta${faltas!==1?'s':''}</div>
-              </div>`).join('')}
-        </div>
-
       </div>
+      ` : ''}
+
     </div>
-    ` : ''}
   </div>`;
 }
 
@@ -8517,3 +8547,4 @@ function buildModalNovoEncontro() {
 </script>
 </body>
 </html>
+  
