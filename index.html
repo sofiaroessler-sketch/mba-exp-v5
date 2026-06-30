@@ -346,6 +346,11 @@ async function dbUpsert(table, data) {
 // Salvamos o estado inteiro como um JSON numa tabela "app_state"
 // com uma única linha { id: 'main', data: {...} }
 let _saveTimer = null;
+// Marca aluno como modificado na sessão atual (para merge inteligente)
+function touchAluno(a) {
+  if (a) a._updatedAt = new Date().toISOString();
+}
+
 function scheduleSave() {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(saveStateToDb, 1500);
@@ -397,13 +402,63 @@ async function saveStateToDb(retryCount = 0) {
       const merged = {
         ...remoteData,
         alunos:      snapshot.alunos,
-        tarefas:     snapshot.tarefas,
-        presenca:    snapshot.presenca,
+        // Tarefas: merge por ID — preserva tarefas de ambos os lados, local ganha em conflito de mesma tarefa
+        tarefas: (() => {
+          const local  = snapshot.tarefas  || [];
+          const remote = remoteData.tarefas || [];
+          const byId = {};
+          // Começa com remotas
+          remote.forEach(t => { byId[t.id] = t; });
+          // Local sobrescreve por ID (inclui exclusões — tarefa que não está no local foi deletada localmente)
+          const localIds = new Set(local.map(t => t.id));
+          local.forEach(t => { byId[t.id] = t; });
+          // Tarefas remotas que não existem no local E não foram criadas antes do load → preserva
+          // (se existe no remoto mas não no local, foi criada por outra pessoa → mantém)
+          remote.forEach(t => {
+            if (!localIds.has(t.id)) byId[t.id] = t;
+          });
+          return Object.values(byId);
+        })(),
+        // Presença: merge célula por célula — nunca apaga marcação de nenhum dos dois lados
+        presenca: (() => {
+          const local  = snapshot.presenca  || {};
+          const remote = remoteData.presenca || {};
+          const result = {};
+          const turmas = new Set([...Object.keys(local), ...Object.keys(remote)]);
+          turmas.forEach(turma => {
+            result[turma] = {};
+            const aulas = new Set([...Object.keys(local[turma]||{}), ...Object.keys(remote[turma]||{})]);
+            aulas.forEach(aula => {
+              result[turma][aula] = {
+                ...(remote[turma]?.[aula] || {}),
+                ...(local[turma]?.[aula]  || {}),
+              };
+            });
+          });
+          return result;
+        })(),
         etapas:      snapshot.etapas,
         aulasDates:  snapshot.aulasDates,
         linkEnviado: snapshot.linkEnviado,
         aulaAberta:  snapshot.aulaAberta,
-        faltaLog:    snapshot.faltaLog,
+        // faltaLog: merge célula por célula igual à presença
+        faltaLog: (() => {
+          const local  = snapshot.faltaLog  || {};
+          const remote = remoteData.faltaLog || {};
+          const result = {};
+          const alunos = new Set([...Object.keys(local), ...Object.keys(remote)]);
+          alunos.forEach(alunoId => {
+            result[alunoId] = {};
+            const aulas = new Set([...Object.keys(local[alunoId]||{}), ...Object.keys(remote[alunoId]||{})]);
+            aulas.forEach(aulaId => {
+              // Pega o array maior (mais registros de falta)
+              const la = local[alunoId]?.[aulaId]  || [];
+              const ra = remote[alunoId]?.[aulaId] || [];
+              result[alunoId][aulaId] = la.length >= ra.length ? la : ra;
+            });
+          });
+          return result;
+        })(),
         riscoCriteria: snapshot.riscoCriteria,
         accessLog:   remoteData.accessLog || [],
         accessStats: (() => {
@@ -429,23 +484,37 @@ async function saveStateToDb(retryCount = 0) {
         expandedAulas: snapshot.expandedAulas || {},
         aulasCustom: snapshot.aulasCustom || {},
         reunioes:    snapshot.reunioes,
-        tarefas:     snapshot.tarefas, // tarefas SEMPRE do local (inclui exclusões)
-        // Alunos: local tem prioridade, mas preserva calendarEventId do remoto
+        // Alunos: merge inteligente por _updatedAt (quem foi modificado mais recentemente ganha)
         alunos: (() => {
           const remoteAlunos = remoteData.alunos || [];
-          return (snapshot.alunos || []).map(a => {
-            const remoteA = remoteAlunos.find(r => r.id === a.id);
-            if (!remoteA) return a;
-            // Preservar calendarEventId nas reuniões (salvo pelo n8n)
-            const reunioes = (a.reunioes || []).map(r => {
+          const localAlunos  = snapshot.alunos || [];
+          // Alunos que só existem no remoto (novos lá)
+          const onlyRemote = remoteAlunos.filter(ra => !localAlunos.find(la => la.id === ra.id));
+          const merged = localAlunos.map(localA => {
+            const remoteA = remoteAlunos.find(r => r.id === localA.id);
+            if (!remoteA) return localA; // só existe local → fica
+            // Comparar timestamps: quem foi modificado mais recentemente ganha
+            const localTs  = localA._updatedAt  || '';
+            const remoteTs = remoteA._updatedAt || '';
+            let winner;
+            if (localTs && remoteTs) {
+              winner = localTs >= remoteTs ? localA : remoteA;
+            } else if (localTs) {
+              winner = localA; // local foi modificado na sessão → ganha
+            } else {
+              winner = localA; // sem timestamps → comportamento antigo: local ganha
+            }
+            // Sempre preservar calendarEventId do remoto nas reuniões (salvo pelo n8n)
+            const reunioes = (winner.reunioes || []).map(r => {
               const remoteR = (remoteA.reunioes || []).find(rr => rr.id === r.id);
               if (remoteR?.calendarEventId && !r.calendarEventId) {
                 return {...r, calendarEventId: remoteR.calendarEventId};
               }
               return r;
             });
-            return {...a, reunioes};
+            return {...winner, reunioes};
           });
+          return [...merged, ...onlyRemote];
         })(),
         encontros2ciclo: {...(remoteData.encontros2ciclo||{}), ...(snapshot.encontros2ciclo||{})},
       };
@@ -3622,6 +3691,7 @@ function attachEvents() {
       if (!al.planilhaOk) al.planilhaOk = {};
       if (!al.planilhaOk[tipo]) al.planilhaOk[tipo] = Array(12).fill(false);
       al.planilhaOk[tipo][Number(idx)] = !al.planilhaOk[tipo][Number(idx)];
+      touchAluno(al);
       scheduleSave();
       render();
     });
@@ -3780,19 +3850,19 @@ function attachEvents() {
   document.querySelectorAll('[data-quickedit-turma]').forEach(el => {
     el.addEventListener('change', () => {
       const a = state.alunos.find(x=>x.id===el.dataset.quickeditTurma);
-      if (a) { a.turma = el.value; scheduleSave(); render(); }
+      if (a) { a.turma = el.value; touchAluno(a); scheduleSave(); render(); }
     });
   });
   document.querySelectorAll('[data-quickedit-resp]').forEach(el => {
     el.addEventListener('change', () => {
       const a = state.alunos.find(x=>x.id===el.dataset.quickeditResp);
-      if (a) { a.responsavel = el.value; if (el.value) concluirTarefaDesignarResp(a.id); scheduleSave(); render(); }
+      if (a) { a.responsavel = el.value; if (el.value) concluirTarefaDesignarResp(a.id); touchAluno(a); scheduleSave(); render(); }
     });
   });
   document.querySelectorAll('[data-quickedit-status]').forEach(el => {
     el.addEventListener('change', () => {
       const a = state.alunos.find(x=>x.id===el.dataset.quickeditStatus);
-      if (a) { a.status = el.value; scheduleSave(); render(); }
+      if (a) { a.status = el.value; touchAluno(a); scheduleSave(); render(); }
     });
   });
 
@@ -4713,6 +4783,7 @@ function salvarReuniao() {
     if (!exists) addTarefa({titulo, responsavel:'bruna', alunoId:a.id, alunoNome:a.nome, prio:'alta', descricao:'Planilha financeira e de leads'});
   }
   state.modal = null;
+  touchAluno(a);
   showToast('Reunião agendada para ' + fmt(data));
   scheduleSave();
   render();
@@ -4804,6 +4875,7 @@ function salvarEdicaoAluno() {
   a.link_propria = g('ef-linkpropria')||'';
   a.status = g('ef-status')||'ativo';
   state.editandoAluno = false;
+  touchAluno(a);
   showToast('Perfil atualizado');
   scheduleSave();
   render();
@@ -4811,7 +4883,7 @@ function salvarEdicaoAluno() {
 
 function salvarLogCS() {
   const a = state.alunos.find(x=>x.id===state.selAluno);
-  if (a) { a.log_cs = document.getElementById('log-cs-area')?.value||''; showToast('Log salvo');
+  if (a) { a.log_cs = document.getElementById('log-cs-area')?.value||''; touchAluno(a); showToast('Log salvo');
   scheduleSave(); }
 }
 
@@ -4842,6 +4914,7 @@ function adicionarNota() {
   if (respProf && respProf.id !== state.user?.id) {
     addTarefa({titulo:`Nova nota em ${a.nome.split(' ')[0]}`, responsavel:respProf.id, alunoId:a.id, alunoNome:a.nome, prio:'media', descricao:`${state.user?.name||'Alguém'} adicionou uma nota`});
   }
+  touchAluno(a);
   showToast('Nota adicionada');
   scheduleSave();
   render();
@@ -4859,6 +4932,7 @@ function salvarEdicaoNota(notaId) {
   n.texto = document.getElementById('nota-edit-texto-'+notaId)?.value.trim() || n.texto;
   n.data  = document.getElementById('nota-edit-data-'+notaId)?.value.trim() || '';
   state.notaEditId = null;
+  touchAluno(a);
   showToast('Nota atualizada');
   scheduleSave();
   render();
@@ -4934,6 +5008,7 @@ function rnotaAddSave() {
     reuniaoTipo: reuniaoRef || null,
   });
   state.rnotaAdding = false;
+  touchAluno(a);
   showToast('Anotação adicionada'); scheduleSave(); render();
 }
 function rnotaEdit(id)    { state.rnotaEditId = id; state.rnotaAdding = false; render(); }
@@ -4944,12 +5019,14 @@ function rnotaEditSave(id) {
   n.data  = document.getElementById('rnota-edit-data-'+id)?.value.trim() ?? n.data;
   n.texto = document.getElementById('rnota-edit-texto-'+id)?.value ?? n.texto;
   state.rnotaEditId = null;
+  touchAluno(a);
   showToast('Anotação atualizada'); scheduleSave(); render();
 }
 function rnotaDel(id) {
   const a = _getAluno(); if (!a) return;
   if (!confirm('Excluir esta anotação?')) return;
   a.reuniaoNotas = (a.reuniaoNotas||[]).filter(x=>x.id!==id);
+  touchAluno(a);
   showToast('Anotação excluída'); scheduleSave(); render();
 }
 
@@ -4985,6 +5062,7 @@ function salvarReuniaoCalendario() {
   };
   a.reunioes.push(reu);
   state.modal = null;
+  touchAluno(a);
   showToast('Reunião agendada para ' + fmt(data));
   scheduleSave();
   render();
@@ -5001,6 +5079,7 @@ function salvarReagendar() {
     if (r) { r.data = novaData; r.hora = novaHora; }
   }
   state.modal = null;
+  touchAluno(a);
   showToast('Reunião reagendada');
   scheduleSave();
   render();
@@ -5026,6 +5105,7 @@ function salvarRealizar() {
       if (!exists) addTarefa({titulo:'Marcar 1:1 — 2 com '+a.nome.split(' ')[0], responsavel:respId, alunoId:m.alunoId, alunoNome:a.nome, prio:'alta'});
     }
   }
+  touchAluno(a);
   showToast('Reunião registrada');
   scheduleSave();
   render();
@@ -6431,6 +6511,7 @@ function salvarOKR() {
   if (!a.okrs) a.okrs = [];
   a.okrs.push({objetivo, periodo:document.getElementById('okr-periodo')?.value||'', transversal:document.getElementById('okr-transversal')?.checked||false, kpis:[]});
   state.modal = null;
+  touchAluno(a);
   showToast('OKR criado');
   scheduleSave();
   render();
@@ -6444,6 +6525,7 @@ function salvarKPI() {
   if (!a||!a.okrs[m.okrIdx]) return;
   a.okrs[m.okrIdx].kpis.push({titulo, descricao:document.getElementById('kpi-desc')?.value.trim()||'', meses:[]});
   state.modal = null;
+  touchAluno(a);
   showToast('KPI adicionado');
   scheduleSave();
   render();
