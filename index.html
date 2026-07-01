@@ -512,9 +512,9 @@ async function saveStateToDb(retryCount = 0) {
               allAlunos.forEach(alunoId => {
                 const lv = localCell[alunoId];
                 const rv = remoteCell[alunoId];
-                // Se local tem valor → local ganha (usuário marcou algo)
-                // Se só remoto tem valor → remoto ganha (não apaga marca de outro)
-                result[turma][aula][alunoId] = lv || rv;
+                // null = desmarcado explicitamente pelo usuário → local ganha (mantém null)
+                // undefined (chave não existe) → usa remoto
+                result[turma][aula][alunoId] = (alunoId in localCell) ? lv : rv;
               });
             });
           });
@@ -656,7 +656,11 @@ async function saveStateToDb(retryCount = 0) {
               const rc = (remote?.[turma]?.[aula]) || {};
               const allAlunos = new Set([...Object.keys(lc), ...Object.keys(rc)]);
               result[turma][aula] = {};
-              allAlunos.forEach(aid => { result[turma][aula][aid] = lc[aid] || rc[aid]; });
+              allAlunos.forEach(aid => {
+                // Se local tem a chave (mesmo null = desmarcado explicitamente), local ganha
+                // Se só remoto tem, usa remoto (marcação de outra pessoa)
+                result[turma][aula][aid] = (aid in lc) ? lc[aid] : rc[aid];
+              });
             });
           });
           return result;
@@ -4162,13 +4166,7 @@ function attachEvents() {
     });
   });
 
-  document.querySelectorAll('[data-action="novo-okr"]').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      state.modal = {type:'novo-okr', alunoId:el.dataset.alunoId};
-      render();
-    });
-  });
+
 
   document.querySelectorAll('[data-novo-kpi]').forEach(el => {
     el.addEventListener('click', e => {
@@ -4332,7 +4330,7 @@ function attachEvents() {
       const next = (!cur||cur==='nao'||cur==='link') ? 'sim' : cur==='sim' ? 'sim2' : null;
       pushUndo();
       if(next) state.presenca[tid][aulaId][alunoId]=next;
-      else delete state.presenca[tid][aulaId][alunoId];
+      else state.presenca[tid][aulaId][alunoId] = null; // null = desmarcado explicitamente
       scheduleSave();
       // Permanent falta log — record nao/link even if later changed
       if(next==='nao'||next==='link') {
@@ -4414,7 +4412,7 @@ function attachEvents() {
       const cur = state.presenca[tid][aulaId][alunoId];
       let op = opRaw;
       if (cur === op) {
-        delete state.presenca[tid][aulaId][alunoId];
+        state.presenca[tid][aulaId][alunoId] = null; // null = explicitamente desmarcado
         op = 'reset';
       } else {
         state.presenca[tid][aulaId][alunoId] = op;
@@ -4730,6 +4728,7 @@ function attachEvents() {
         // não existe → criar e marcar
         al.reunioes.push({id:'r_'+Date.now(), tipo:aulaLabel, data:new Date().toISOString().slice(0,10), realizada:true, notas:'', proxPassos:''});
       }
+      touchAluno(al);
       scheduleSave();
       render();
     });
@@ -4757,8 +4756,9 @@ function attachEvents() {
       el.disabled = true;
       el.style.background = 'var(--green-bg)';
       el.style.color = 'var(--green-t)';
+      touchAluno(a);
       showToast(`${a.nome.split(' ')[0]} adicionado à turma ${tid}`);
-  scheduleSave();
+      scheduleSave();
     });
   });
 
@@ -4881,6 +4881,7 @@ function attachEvents() {
       const a = state.alunos.find(x=>x.id===el.dataset.alunoId);
       if (!a) return;
       a.reunioes = (a.reunioes||[]).filter(r=>r.id!==el.dataset.delReuniao);
+      touchAluno(a);
       showToast('Reunião apagada');
       scheduleSave();
       render();
@@ -4899,6 +4900,7 @@ function attachEvents() {
       r.realizada = false;
       r.notas = '';
       r.proxPassos = '';
+      touchAluno(a);
       showToast('Reunião desmarcada');
       scheduleSave();
       render();
@@ -7063,7 +7065,8 @@ function buildMinhasReunioesPage() {
     (a.reunioes||[]).forEach(r => {
       const minhaReuniao = r.responsavelId === uid;
       const meuAluno = a.responsavel === myName;
-      if (isGod() || isBruna() || minhaReuniao || meuAluno) {
+      // Bruna vê tudo; demais (incluindo isGod) veem só as suas
+      if (isBruna() || minhaReuniao || meuAluno) {
         todasReunioes.push({...r, alunoNome: a.nome, alunoId: a.id, turma: a.turma, alunoWpp: a.whatsapp});
       }
     });
