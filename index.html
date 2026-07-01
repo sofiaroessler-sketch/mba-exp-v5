@@ -939,7 +939,7 @@ async function savePwdDirect() {
   }
 }
 // Permission helpers — no labels ever shown in UI
-const GOD_MODE   = ['ygor','bruna','admin','teste_2189'];
+const GOD_MODE   = ['ygor','admin','teste_2189'];
 const MEDICOS_INT= ['matheus','simone','isabella']; // do reunião individual
 const CONSULTORES= ['otavio','emura','amyr'];
 function isGod()     { return GOD_MODE.includes(state.user?.id); }
@@ -1947,7 +1947,11 @@ function buildCronograma(t, alunos) {
   }
 
   const bloco0Done = isBloco0Done();
-  const aulasDone = getAulasDaTurma(t.id).map(ad => ({ad, done: isAulaDone(ad)}));
+  // Cronograma: bloco 3 (a10, a11, a12) nunca vai existir de verdade — filtrar
+  // para que não interfiram no nextIdx e os 1:1 apareçam corretamente
+  const aulasDone = getAulasDaTurma(t.id)
+    .filter(ad => ad.bloco !== 3)
+    .map(ad => ({ad, done: isAulaDone(ad)}));
 
   // Find index of first not-done item (bloco0 counts as index -1)
   let nextIdx = bloco0Done ? 0 : -1;
@@ -2270,17 +2274,27 @@ function buildAlunosTurma(t, alunos) {
 // TAREFAS PAGE
 // ═══════════════════════════════════════════════════════
 function buildTarefasPage() {
-  if (!state.tarefaFilter) state.tarefaFilter = 'pendentes';
-  const minhas = getMinhasTarefas();
+  if (!state.tarefaFilter)     state.tarefaFilter     = 'pendentes';
+  if (!state.tarefaTipoFilter) state.tarefaTipoFilter = 'todos';
+
+  const minhas   = getMinhasTarefas();
   const pendentes = minhas.filter(t=>!t.done);
   const feitas    = minhas.filter(t=>t.done);
-  const urgentes   = pendentes.filter(t=>t.prazo&&t.prazo<=addDays(now(),3));
-  const showing   = state.tarefaFilter === 'pendentes' ? pendentes : state.tarefaFilter === 'urgentes' ? urgentes : minhas;
 
-  // Group pending by type for Bruna
-  const linkTasks  = pendentes.filter(t=>t.tipo==='enviar-link');
-  const videoTasks = pendentes.filter(t=>t.tipo==='cobrar-video');
-  const outrasTasks= pendentes.filter(t=>!t.tipo||!['enviar-link','cobrar-video'].includes(t.tipo));
+  // Grupos por tipo (para Bruna)
+  const linkTasks   = pendentes.filter(t=>t.tipo==='enviar-link');
+  const videoTasks  = pendentes.filter(t=>t.tipo==='cobrar-video');
+  const formsTasks  = pendentes.filter(t=>t.tipo==='enviar-forms'||t.tipo==='verificar-forms'||t.titulo?.startsWith('Mandar forms')||t.titulo?.startsWith('Verificar recebimento'));
+  const outrasTasks = pendentes.filter(t=>!['enviar-link','cobrar-video','enviar-forms','verificar-forms'].includes(t.tipo)&&!t.titulo?.startsWith('Mandar forms')&&!t.titulo?.startsWith('Verificar recebimento'));
+
+  // Filtro por tipo (só Bruna)
+  let pendentesParaMostrar = pendentes;
+  if (isBruna() && state.tarefaTipoFilter !== 'todos') {
+    if (state.tarefaTipoFilter === 'link')   pendentesParaMostrar = linkTasks;
+    if (state.tarefaTipoFilter === 'video')  pendentesParaMostrar = videoTasks;
+    if (state.tarefaTipoFilter === 'forms')  pendentesParaMostrar = formsTasks;
+    if (state.tarefaTipoFilter === 'outras') pendentesParaMostrar = outrasTasks;
+  }
 
   return `
   <div class="page">
@@ -2291,26 +2305,26 @@ function buildTarefasPage() {
       </div>
       <button class="btn btn-primary" data-action="nova-tarefa">${I.plus} Nova Tarefa</button>
     </div>
-    <div style="padding:0 26px 10px;display:flex;gap:6px;flex-shrink:0">
+    <div style="padding:0 26px 10px;display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
       <div class="inner-tab ${state.tarefaFilter==='pendentes'?'active':''}" data-tarefa-filter="pendentes" style="cursor:pointer">Pendentes (${pendentes.length})</div>
       <div class="inner-tab ${state.tarefaFilter==='urgentes'?'active':''}" data-tarefa-filter="urgentes" style="cursor:pointer">Urgentes (${pendentes.filter(t=>t.prazo&&t.prazo<=addDays(now(),3)).length})</div>
       <div class="inner-tab ${state.tarefaFilter==='todas'?'active':''}" data-tarefa-filter="todas" style="cursor:pointer">Todas (${pendentes.length})</div>
     </div>
+
+    ${isBruna() && state.tarefaFilter==='pendentes' ? `
+    <div style="padding:0 26px 10px;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:10px">
+      <span style="font-size:11px;color:var(--t4);align-self:center;margin-right:4px">Tipo:</span>
+      <div class="inner-tab ${state.tarefaTipoFilter==='todos'?'active':''}" data-tarefa-tipo-filter="todos" style="cursor:pointer;font-size:11.5px">Todos (${pendentes.length})</div>
+      ${linkTasks.length ? `<div class="inner-tab ${state.tarefaTipoFilter==='link'?'active':''}" data-tarefa-tipo-filter="link" style="cursor:pointer;font-size:11.5px">Enviar Link (${linkTasks.length})</div>` : ''}
+      ${videoTasks.length ? `<div class="inner-tab ${state.tarefaTipoFilter==='video'?'active':''}" data-tarefa-tipo-filter="video" style="cursor:pointer;font-size:11.5px">Cobrar Vídeo (${videoTasks.length})</div>` : ''}
+      ${formsTasks.length ? `<div class="inner-tab ${state.tarefaTipoFilter==='forms'?'active':''}" data-tarefa-tipo-filter="forms" style="cursor:pointer;font-size:11.5px">Forms (${formsTasks.length})</div>` : ''}
+      ${outrasTasks.length ? `<div class="inner-tab ${state.tarefaTipoFilter==='outras'?'active':''}" data-tarefa-tipo-filter="outras" style="cursor:pointer;font-size:11.5px">Outras (${outrasTasks.length})</div>` : ''}
+    </div>` : ''}
+
     <div class="page-body" style="padding-top:8px">
-      ${state.tarefaFilter==='pendentes' && pendentes.length===0 ? `<div class="empty-state" style="padding:32px 0">${I.tasks}<p>Nenhuma tarefa pendente </p></div>` : ''}
-      ${state.tarefaFilter==='pendentes' && isBruna() && (linkTasks.length||videoTasks.length) ? `
-        ${linkTasks.length ? `
-          <div style="font-size:11px;font-weight:600;color:var(--amber-t);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px"> Enviar Link (${linkTasks.length})</div>
-          ${linkTasks.map(t=>buildTarefaItem(t,false)).join('')}
-          <div class="divider"></div>` : ''}
-        ${videoTasks.length ? `
-          <div style="font-size:11px;font-weight:600;color:var(--brand-h);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px"> Cobrar Vídeo (${videoTasks.length})</div>
-          ${videoTasks.map(t=>buildTarefaItem(t,false)).join('')}
-          <div class="divider"></div>` : ''}
-        ${outrasTasks.length ? `
-          <div style="font-size:11px;font-weight:600;color:var(--t4);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Outras (${outrasTasks.length})</div>
-          ${outrasTasks.map(t=>buildTarefaItem(t,false)).join('')}` : ''}
-      ` : state.tarefaFilter==='pendentes' ? pendentes.map(t=>buildTarefaItem(t,false)).join('') : ''}
+      ${state.tarefaFilter==='pendentes' && pendentesParaMostrar.length===0 ? `<div class="empty-state" style="padding:32px 0">${I.tasks}<p>Nenhuma tarefa pendente</p></div>` : ''}
+      ${state.tarefaFilter==='pendentes' ? pendentesParaMostrar.map(t=>buildTarefaItem(t,false)).join('') : ''}
+      ${state.tarefaFilter==='urgentes' ? pendentes.filter(t=>t.prazo&&t.prazo<=addDays(now(),3)).map(t=>buildTarefaItem(t,false)).join('') : ''}
       ${state.tarefaFilter==='todas' ? `
         ${pendentes.map(t=>buildTarefaItem(t,false)).join('')}
         ${feitas.length>0 ? `<div class="divider"></div><div class="section-title" style="margin-bottom:10px">Concluídas</div>${feitas.slice(0,20).map(t=>buildTarefaItem(t,true)).join('')}` : ''}
@@ -4546,7 +4560,10 @@ function attachEvents() {
 
   // Tarefa filter tabs
   document.querySelectorAll('[data-tarefa-filter]').forEach(el => {
-    el.addEventListener('click', () => { state.tarefaFilter = el.dataset.tarefaFilter; render(); });
+    el.addEventListener('click', () => { state.tarefaFilter = el.dataset.tarefaFilter; state.tarefaTipoFilter = 'todos'; render(); });
+  });
+  document.querySelectorAll('[data-tarefa-tipo-filter]').forEach(el => {
+    el.addEventListener('click', () => { state.tarefaTipoFilter = el.dataset.tarefaTipoFilter; render(); });
   });
 
   // Calendar: click reuniao to realize it
